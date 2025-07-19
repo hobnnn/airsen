@@ -11,7 +11,7 @@ use PhpParser\Node\Stmt\TryCatch;
 class FirebaseConnectionController extends Controller
 {
     public function index(){
-        $path = base_path('storage/firebase/firebase.json');
+        $path = base_path(env('FIREBASE_CREDENTIALS'));
 
         if(!file_exists($path)){
             die("This File Path .($path). does not Exist");
