@@ -14,7 +14,7 @@ class FirebaseAuthController extends Controller
 
     public function __construct()
     {
-        $path = base_path('storage/firebase/firebase.json');
+        $path = base_path(env('FIREBASE_CREDENTIALS'));
 
         if (!file_exists($path)) {
             die("This file path ($path) does not exist");
