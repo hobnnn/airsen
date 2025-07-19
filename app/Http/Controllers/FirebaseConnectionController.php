@@ -21,7 +21,7 @@ class FirebaseConnectionController extends Controller
 
             $factory = (new Factory)
             ->withServiceAccount($path)
-            ->withDatabaseUri('https://airsenhack-c8b62-default-rtdb.firebaseio.com/');
+            ->withDatabaseUri('https://airhack-7b64d-default-rtdb.firebaseio.com/');
 
             $database = $factory->createDatabase();
             $reference = $database->getReference('contacts');
