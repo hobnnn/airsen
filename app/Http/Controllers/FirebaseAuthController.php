@@ -1,7 +1,7 @@
 <?php 
 namespace App\Http\Controllers;
 
-use App\Models\User; // ✅ Use your local User model
+use App\Models\User; 
 use Illuminate\Http\Request;
 use Kreait\Firebase\Factory;
 use Illuminate\Support\Facades\Hash;

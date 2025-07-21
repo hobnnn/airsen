@@ -10,6 +10,7 @@ use PhpParser\Node\Stmt\TryCatch;
 
 class FirebaseConnectionController extends Controller
 {
+    protected $database;
     public function index(){
         $path = base_path(env('FIREBASE_CREDENTIALS'));
 
@@ -41,4 +42,6 @@ class FirebaseConnectionController extends Controller
             ]);
         }
     }
+
+
 }

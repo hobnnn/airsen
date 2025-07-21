@@ -1,32 +1,43 @@
 <?php
 
-// app/Services/FirebaseService.php
-
 namespace App\Services;
 
 use Kreait\Firebase\Factory;
+use Exception;
 
 class FirebaseService
 {
-    protected $auth;
-    protected $firestore;
+    protected $database;
 
     public function __construct()
     {
+        $path = base_path(env('FIREBASE_CREDENTIALS'));
+
+        if (!file_exists($path)) {
+            throw new \Exception("Firebase credentials file does not exist at path: $path");
+        }
+
         $factory = (new Factory)
-            ->withServiceAccount(storage_path('storage/firebase/firebase.json'));
+            ->withServiceAccount($path)
+            ->withDatabaseUri('https://airhack-7b64d-default-rtdb.firebaseio.com/');
 
-        $this->auth = $factory->createAuth();
-        $this->firestore = $factory->createFirestore()->database();
+        $this->database = $factory->createDatabase();
     }
 
-    public function getAuth()
+    public function getAllDevices()
     {
-        return $this->auth;
+        return $this->database->getReference('devices')->getValue();
     }
 
-    public function getFirestore()
+    public function checkConnection()
     {
-        return $this->firestore;
+        try {
+            $reference = $this->database->getReference('contacts');
+            $reference->set(['connection' => true]);
+            $snapShot = $reference->getSnapshot();
+            return $snapShot->getValue();
+        } catch (Exception $e) {
+            return ['error' => $e->getMessage()];
+        }
     }
 }
