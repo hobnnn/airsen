@@ -8,70 +8,92 @@
     <div class="container">
         <!-- Top Section: Map + Devices -->
         <div class="top-section">
-            <!-- Map Area -->
-            <div class="map-area">
-                Map Placeholder
-            </div>
+            <div class="map-area">Map Placeholder</div>
 
-            <!-- Devices Area -->
             <div class="device-list">
                 <h3>Devices</h3>
-                @if (count($devices) > 0)
-                    <ul>
-                        @foreach ($devices as $deviceId => $device)
-                            <li>{{ $device['Device_Setting']['Device_Name'] }}</li>
-                        @endforeach
-                    </ul>
-                @else
-                    <p>No devices found.</p>
-                @endif
+                <ul id="device-list"></ul>
             </div>
         </div>
 
-        @php
-            function levelColor($level) {
-                return match(strtolower($level)) {
-                    'low' => 'low-level',
-                    'medium' => 'medium-level',
-                    'high' => 'high-level',
-                    default => 'neutral-level'
-                };
-            }
-        @endphp
-
-        <!-- Sensor Cards Area -->
-        @if (count($devices) > 0)
-            <div style="display: flex; flex-wrap: wrap;">
-                @foreach ($devices as $deviceId => $device)
-                    <div class="device-card">
-                        <h4>{{ $device['Device_Setting']['Device_Name'] }}</h4>
-                        <div class="sensor-box-grid">
-                            <div class="sensor-box {{ levelColor($device['Sensor_Data']['CO2-LVL']) }}">
-                                <strong>CO2</strong>
-                                <div>{{ $device['Sensor_Data']['CO2'] }}</div>
-                                <small>({{ $device['Sensor_Data']['CO2-LVL'] }})</small>
-                            </div>
-                            <div class="sensor-box {{ levelColor($device['Sensor_Data']['CO-LPG-LVL']) }}">
-                                <strong>CO-LPG</strong>
-                                <div>{{ $device['Sensor_Data']['CO-LPG'] }}</div>
-                                <small>({{ $device['Sensor_Data']['CO-LPG-LVL'] }})</small>
-                            </div>
-                            <div class="sensor-box {{ levelColor($device['Sensor_Data']['General-LVL']) }}">
-                                <strong>General</strong>
-                                <div>{{ $device['Sensor_Data']['General'] }}</div>
-                                <small>({{ $device['Sensor_Data']['General-LVL'] }})</small>
-                            </div>
-                            <div class="sensor-box {{ levelColor($device['Sensor_Data']['SO2-H2S-LVL']) }}">
-                                <strong>SO2-H2S</strong>
-                                <div>{{ $device['Sensor_Data']['SO2-H2S'] }}</div>
-                                <small>({{ $device['Sensor_Data']['SO2-H2S-LVL'] }})</small>
-                            </div>
-                        </div>
-                    </div>
-                @endforeach
-            </div>
-        @else
-            <p>No devices found.</p>
-        @endif
+        <!-- Sensor Cards Area: Populated from Firebase -->
+        <div id="device-container" style="display: flex; flex-wrap: wrap;"></div>
     </div>
+
+    <!-- Firebase Compat SDK -->
+    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
+
+    <script>
+        const firebaseConfig = {
+            apiKey: "{{ env('FIREBASE_CLIENT_API_KEY') }}",
+            authDomain: "{{ env('FIREBASE_CLIENT_AUTH_DOMAIN') }}",
+            databaseURL: "{{ env('FIREBASE_CLIENT_DATABASE_URL') }}",
+            projectId: "{{ env('FIREBASE_CLIENT_PROJECT_ID') }}",
+            storageBucket: "{{ env('FIREBASE_CLIENT_STORAGE_BUCKET') }}",
+            messagingSenderId: "{{ env('FIREBASE_CLIENT_MESSAGING_SENDER_ID') }}",
+            appId: "{{ env('FIREBASE_CLIENT_APP_ID') }}"
+        };
+
+        firebase.initializeApp(firebaseConfig);
+        const db = firebase.database();
+
+        function getLevelClass(level) {
+            switch (level?.toLowerCase()) {
+                case 'low': return 'low-level';
+                case 'medium': return 'medium-level';
+                case 'high': return 'high-level';
+                default: return 'neutral-level';
+            }
+        }
+
+        function buildDeviceCard(deviceId, device) {
+            const sensorData = device.Sensor_Data;
+            const container = document.getElementById('device-container');
+
+            // Create or update sensor card
+            let card = document.getElementById(`device-${deviceId}`);
+            if (!card) {
+                card = document.createElement('div');
+                card.id = `device-${deviceId}`;
+                card.className = 'device-card';
+                container.appendChild(card);
+            }
+
+            card.innerHTML = `
+                <h4>${device.Device_Setting.Device_Name}</h4>
+                <div class="sensor-box-grid">
+                    ${['CO2', 'CO-LPG', 'General', 'SO2-H2S'].map(key => `
+                        <div id="box-${key.toLowerCase()}-${deviceId}" class="sensor-box ${getLevelClass(sensorData[`${key}-LVL`])}">
+                            <strong>${key}</strong>
+                            <div id="${key.toLowerCase()}-${deviceId}">${sensorData[key]}</div>
+                            <small id="${key.toLowerCase()}lvl-${deviceId}">(${sensorData[`${key}-LVL`]})</small>
+                        </div>
+                    `).join('')}
+                </div>
+            `;
+        }
+
+        function updateDeviceList(devices) {
+            const deviceList = document.getElementById('device-list');
+            deviceList.innerHTML = ''; // Clear current list
+
+            Object.entries(devices).forEach(([deviceId, device]) => {
+                const li = document.createElement('li');
+                li.textContent = device.Device_Setting.Device_Name;
+                li.id = `device-name-${deviceId}`;
+                deviceList.appendChild(li);
+            });
+        }
+
+        db.ref("DEVICES").on("value", (snapshot) => {
+            const devices = snapshot.val();
+            if (!devices) return;
+
+            updateDeviceList(devices);
+            Object.entries(devices).forEach(([deviceId, device]) => {
+                buildDeviceCard(deviceId, device);
+            });
+        });
+    </script>
 </x-app-layout>
