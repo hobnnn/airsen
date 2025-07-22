@@ -19,14 +19,14 @@ class FirebaseService
 
         $factory = (new Factory)
             ->withServiceAccount($path)
-            ->withDatabaseUri('https://airhack-7b64d-default-rtdb.firebaseio.com/');
+            ->withDatabaseUri('https://airsentinel-6d53a-default-rtdb.asia-southeast1.firebasedatabase.app/');
 
         $this->database = $factory->createDatabase();
     }
 
     public function getAllDevices()
     {
-        return $this->database->getReference('devices')->getValue();
+        return $this->database->getReference('DEVICES')->getValue();
     }
 
     public function checkConnection()
