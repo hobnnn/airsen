@@ -157,6 +157,18 @@
         color: #333;
     }
 
+    .device-list li {
+  transition: background-color 0.2s ease, transform 0.2s ease;
+  padding: 8px 12px;
+  border-radius: 8px;
+}
+
+.device-list li:hover {
+  background-color: #e6f0ff;
+  transform: translateX(4px);
+  cursor: pointer;
+}
+
     .device-card {
   width: 400px;
   min-height: 300px;
@@ -168,6 +180,12 @@
   display: flex;
   flex-direction: column;
   justify-content: space-between;
+}
+
+.device-card.hovered {
+  outline: 2px dashed #4d90fe;
+  background-color: #f0f8ff;
+  transition: outline 0.2s ease, background-color 0.2s ease;
 }
 
     .device-card.alert {
@@ -197,6 +215,31 @@
   background-color: #eee;
   border-radius: 12px;
   margin-bottom: 24px;
+}
+
+.sensor-critical {
+  background-color: #e9a4a4;
+  color: #5a0000;
+}
+
+.sensor-very-unhealthy {
+  background-color: #fbd4d4;
+  color: #b30000;
+}
+
+.sensor-unhealthy {
+  background-color: #ffe2cc;
+  color: #cc3300;
+}
+
+.sensor-moderate {
+  background-color: #fff8cc;
+  color: #665500;
+}
+
+.sensor-safe {
+  background-color: #d9fdd9;
+  color: #006600;
 }
 </style>
 
@@ -238,17 +281,16 @@
   firebase.initializeApp(firebaseConfig);
   const db = firebase.database();
 
-  const getLevelClass = (level) => {
-    switch ((level || "").toLowerCase()) {
-      case "safe": return "low-level";
-      case "medium": return "medium-level";
-      case "unhealthy": return "medium-level";
-      case "very unhealthy":
-      case "critical":
-        return "high-level";
-      default: return "neutral-level";
-    }
-  };
+const getLevelClass = (level) => {
+  switch ((level || "").toLowerCase().trim()) {
+    case "safe": return "sensor-safe";
+    case "moderate": return "sensor-moderate";
+    case "unhealthy": return "sensor-unhealthy";
+    case "very unhealthy": return "sensor-very-unhealthy";
+    case "critical": return "sensor-critical";
+    default: return "sensor-neutral";
+  }
+};
 
 const buildDeviceCard = (deviceId, device) => {
   const sensorData = device.SENSOR_DATA || {};
@@ -296,48 +338,66 @@ const buildDeviceCard = (deviceId, device) => {
   `;
 };
 
-  const updateDeviceList = (devices) => {
-    const deviceList = document.getElementById("device-list");
-    deviceList.innerHTML = "";
+function updateDeviceList(devices) {
+  const deviceList = document.getElementById("device-list");
+  deviceList.innerHTML = "";
 
-    const getAlertScore = (sensorData) =>
-      Object.values(sensorData || {}).some((sensor) =>
-        ["Unhealthy", "Very Unhealthy", "Critical"].includes(sensor?.Level)
-      );
+  const getAlertScore = (sensorData) =>
+    Object.values(sensorData || {}).some((sensor) =>
+      ["Unhealthy", "Very Unhealthy", "Critical"].includes(sensor?.Level)
+    );
 
-    const sortScore = (locked, alert) => {
-      if (locked && alert) return 3;
-      if (locked) return 2;
-      if (alert) return 1;
-      return 0;
-    };
-
-    const sorted = Object.entries(devices).sort(([, a], [, b]) => {
-      const sa = a.DEVICE_SETTING || {};
-      const sb = b.DEVICE_SETTING || {};
-      const la = sa.Lock_Device === true;
-      const lb = sb.Lock_Device === true;
-      const aa = getAlertScore(a.SENSOR_DATA);
-      const ab = getAlertScore(b.SENSOR_DATA);
-      return sortScore(lb, ab) - sortScore(la, aa);
-    });
-
-    sorted.forEach(([deviceId, device]) => {
-      const setting = device.DEVICE_SETTING || {};
-      const { Device_Name = "Unnamed", Location_Name = "", Display_Name_Mode = "device" } = setting;
-      const name = Display_Name_Mode === "location" ? Location_Name : Device_Name;
-      const isAlert = getAlertScore(device.SENSOR_DATA);
-
-      const li = document.createElement("li");
-      li.id = `device-name-${deviceId}`;
-      li.className = isAlert ? "alert" : "";
-      li.style.display = "flex";
-      li.style.justifyContent = "space-between";
-      li.style.alignItems = "center";
-      li.innerHTML = `<span>${name}</span>`;
-      deviceList.appendChild(li);
-    });
+  const sortScore = (locked, alert) => {
+    if (locked && alert) return 3;
+    if (locked) return 2;
+    if (alert) return 1;
+    return 0;
   };
+
+  const sorted = Object.entries(devices).sort(([, a], [, b]) => {
+    const sa = a.DEVICE_SETTING || {};
+    const sb = b.DEVICE_SETTING || {};
+    const la = sa.Lock_Device === true;
+    const lb = sb.Lock_Device === true;
+    const aa = getAlertScore(a.SENSOR_DATA);
+    const ab = getAlertScore(b.SENSOR_DATA);
+    return sortScore(lb, ab) - sortScore(la, aa);
+  });
+
+  sorted.forEach(([deviceId, device]) => {
+    const setting = device.DEVICE_SETTING || {};
+    const { Device_Name = "Unnamed", Location_Name = "", Display_Name_Mode = "device" } = setting;
+    const name = Display_Name_Mode === "location" ? Location_Name : Device_Name;
+    const isAlert = getAlertScore(device.SENSOR_DATA);
+
+    const li = document.createElement("li");
+    li.id = `device-name-${deviceId}`;
+    li.className = isAlert ? "alert" : "";
+    li.style.display = "flex";
+    li.style.justifyContent = "space-between";
+    li.style.alignItems = "center";
+    li.innerHTML = `<span>${name}</span>`;
+
+    // 📍 Hover to zoom on pin
+    li.addEventListener("mouseenter", () => {
+  const pin = markerMap[deviceId];
+  if (pin?.position) {
+    map.panTo(pin.position);
+    map.setZoom(16);
+  }
+
+  const card = document.getElementById(`device-${deviceId}`);
+  if (card) card.classList.add("hovered");
+});
+
+li.addEventListener("mouseleave", () => {
+  const card = document.getElementById(`device-${deviceId}`);
+  if (card) card.classList.remove("hovered");
+});
+
+    deviceList.appendChild(li);
+  });
+}
 
   db.ref("DEVICES").on("value", (snapshot) => {
     const devices = snapshot.val() || {};
@@ -356,6 +416,9 @@ const buildDeviceCard = (deviceId, device) => {
     updateDeviceList(devices);
     Object.entries(devices).forEach(([deviceId, device]) => buildDeviceCard(deviceId, device));
   });
+
+  
+
 
   function openSettings(deviceId) {
     const ref = db.ref(`DEVICES/${deviceId}/DEVICE_SETTING`);
@@ -481,39 +544,61 @@ function saveDeviceName() {
  
 //maps
 
+let map;
+const markerMap = {};
+const circleMap = {};
+
 async function initMap() {
   const { Map } = await google.maps.importLibrary("maps");
   const { AdvancedMarkerElement } = await google.maps.importLibrary("marker");
 
-  const map = new Map(document.getElementById("map"), {
-    center: { lat: 14.2695, lng: 121.0994 }, // Binãn default
+  map = new Map(document.getElementById("map"), {
+    center: { lat: 14.2695, lng: 121.0994 },
     zoom: 14,
-    mapId: "YOUR_MAP_ID", // Replace with your actual map ID
+    mapId: "YOUR_MAP_ID",
     mapTypeControl: false,
     streetViewControl: false,
     fullscreenControl: false,
   });
 
   const ref = firebase.database().ref("DEVICES");
-  const snapshot = await ref.once("value");
-  const devices = snapshot.val();
 
-  if (!devices) return;
+  // 🔁 Initial map render (accurate radius from DEVICE_SETTING)
+  ref.once("value").then((snapshot) => {
+    const devices = snapshot.val();
+    if (!devices) return;
 
-  Object.entries(devices).forEach(([deviceId, device]) => {
-    const setting = device.DEVICE_SETTING;
-    if (!setting) return;
+    Object.entries(devices).forEach(([deviceId, device]) => {
+      drawCircleAndMarker(deviceId, device);
+    });
+  });
 
-    const lat = parseFloat(setting.Latitude);
-    const lng = parseFloat(setting.Longitude);
-    const label = setting.Location_Name || setting.Device_Name || deviceId;
+  // 🔄 Realtime radius-only listener
+  ref.once("value").then((snapshot) => {
+    const devices = snapshot.val();
+    if (!devices) return;
 
-    if (isNaN(lat) || isNaN(lng)) return;
+    Object.keys(devices).forEach((deviceId) => {
+      firebase.database()
+        .ref(`DEVICES/${deviceId}/DEVICE_SETTING/Radius`)
+        .on("value", (snap) => {
+          const radius = parseFloat(snap.val());
+          const validRadius = isNaN(radius) || radius <= 0 ? 100 : radius;
 
-    new AdvancedMarkerElement({
-      map,
-      position: { lat, lng },
-      title: label
+          if (circleMap[deviceId]) {
+            circleMap[deviceId].setOptions({ radius: validRadius });
+          }
+        });
+    });
+  });
+
+  // 🔁 Realtime device updates for position / color changes
+  ref.on("value", (snapshot) => {
+    const devices = snapshot.val();
+    if (!devices) return;
+
+    Object.entries(devices).forEach(([deviceId, device]) => {
+      drawCircleAndMarker(deviceId, device);
     });
   });
 }
@@ -521,12 +606,86 @@ async function initMap() {
 // Trigger map init after page load
 window.addEventListener("load", initMap);
 
+function getHighestLevel(sensorData) {
+  const priority = ["critical", "very unhealthy", "unhealthy", "moderate", "safe"];
+  let detectedLevel = "safe"; // start at lowest
+
+  Object.values(sensorData || {}).forEach(value => {
+    const level = value?.Level?.toLowerCase();
+    if (priority.includes(level)) {
+      if (priority.indexOf(level) < priority.indexOf(detectedLevel)) {
+        detectedLevel = level;
+      }
+    }
+  });
+
+  return detectedLevel;
+}
+
+function drawCircleAndMarker(deviceId, device) {
+  const setting = device.DEVICE_SETTING;
+  if (!setting) return;
+
+  const lat = parseFloat(setting.Latitude);
+  const lng = parseFloat(setting.Longitude);
+  const radius = parseFloat(setting.Radius);
+  const label = setting.Location_Name || setting.Device_Name || deviceId;
+  const color = getCircleColor(getHighestLevel(device.SENSOR_DATA));
+
+  if (isNaN(lat) || isNaN(lng)) return;
+  const validRadius = isNaN(radius) || radius <= 0 ? 100 : radius;
+
+  if (circleMap[deviceId]) {
+    circleMap[deviceId].setOptions({
+      center: { lat, lng },
+      radius: validRadius,
+      strokeColor: color,
+      fillColor: color,
+    });
+  } else {
+    const circle = new google.maps.Circle({
+      strokeColor: color,
+      strokeOpacity: 0.6,
+      strokeWeight: 2,
+      fillColor: color,
+      fillOpacity: 0.25,
+      map,
+      center: { lat, lng },
+      radius: validRadius,
+    });
+    circleMap[deviceId] = circle;
+  }
+
+  if (markerMap[deviceId]?.marker) {
+    markerMap[deviceId].marker.map = null;
+  }
+
+ const marker = new google.maps.marker.AdvancedMarkerElement({
+  map,
+  position: { lat, lng },
+  title: label,
+});
+
+  markerMap[deviceId] = { marker, position: { lat, lng } };
+}
+
+function getCircleColor(level) {
+  switch (level?.toLowerCase().trim()) {
+    case "critical": return "#8B0000";          // Dark Red
+    case "very unhealthy": return "#FF0000";    // Bright Red
+    case "unhealthy": return "#FF4500";         // Orange-Red
+    case "moderate": return "#FFFF00";          // Yellow
+    case "safe": return "#00FF00";              // Green
+    default: return "#cccccc";                  // Gray fallback
+  }
+}
+
+
+
     </script>
 
-<script
-  src="https://maps.googleapis.com/maps/api/js?key={{ env('GOOGLE_MAPS_API_KEY') }}&loading=async&callback=initMap&v=weekly&libraries=marker"
-  defer
-></script>
+<script async src="https://maps.googleapis.com/maps/api/js?key={{ env('GOOGLE_MAPS_API_KEY') }}&loading=async&v=beta&libraries=marker,geometry"></script>
+
 
 
 
