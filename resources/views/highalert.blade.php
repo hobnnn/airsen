@@ -70,7 +70,7 @@
             <div class="tab-button active" data-sensor="All">All</div>
             <div class="tab-button" data-sensor="CO-LPG">CO-LPG</div>
             <div class="tab-button" data-sensor="CO2">CO2</div>
-            <div class="tab-button" data-sensor="General">General</div>
+            <div class="tab-button" data-sensor="Gen_Air_Qua">General</div>
             <div class="tab-button" data-sensor="SO2-H2S">SO2-H2S</div>
           </div>
 
@@ -98,10 +98,11 @@
     firebase.initializeApp(firebaseConfig);
     const db = firebase.database();
     const ALERT_LEVELS = ["Unhealthy", "Very Unhealthy", "Critical"];
+
     const SENSOR_LABEL_MAP = {
       "CO-LPG": ["Carbon Monoxide / LPG"],
       "CO2": ["Carbon Dioxide"],
-      "General": ["Air Quality (General Pollution)"],
+      "Gen_Air_Qua": ["Air Quality (General Pollution)"],
       "SO2-H2S": ["Sulfur Dioxide / Hydrogen Sulfide"]
     };
 
@@ -214,49 +215,4 @@ deviceLabel.textContent = `${uidFull} — ${name} — Radius: ${radius}m`;
     loadHighAlertDevices();
   </script>
 
-  <script>
-  const ALERT_SCAN_INTERVAL_MS = 1800000; // ⏱ 30 minutes
-
-  function checkAndLogAlerts() {
-    db.ref("DEVICES").once("value").then(snapshot => {
-      const devices = snapshot.val();
-      if (!devices) return;
-
-      Object.entries(devices).forEach(([deviceId, device]) => {
-        const UID = device?.DEVICE_SETTING?.Device_UID || deviceId;
-        const safeUID = UID.replace(/[.#$[\]/]/g, "_");
-        const sensors = device?.SENSOR_DATA || {};
-
-        Object.entries(sensors).forEach(([sensorType, sensorData]) => {
-          if (typeof sensorData !== "object") return;
-
-          const level = sensorData.Level;
-          const value = sensorData.Value;
-          const label = sensorData.Label || sensorType;
-
-          if (ALERT_LEVELS.includes(level)) {
-            const timestamp = new Date().toISOString();
-            const safeTimestamp = timestamp.replace(/[.#$[\]/:]/g, "_");
-            const safeSensor = sensorType.replace(/[.#$[\]/]/g, "_");
-
-            const logData = {
-              Sensor_Label: label,
-              Sensor_Value: value,
-              Sensor_Level: level,
-              Timestamp: timestamp
-            };
-
-            const path = `HIGH_ALERT_LOGS/${safeUID}/${safeSensor}/${safeTimestamp}`;
-            db.ref(path).set(logData);
-          }
-        });
-      });
-    });
-  }
-
-  // 🔁 Start scanning loop every 30 minutes — no initial trigger
-  setInterval(checkAndLogAlerts, ALERT_SCAN_INTERVAL_MS);
-
-  
-</script>
 </x-app-layout>
