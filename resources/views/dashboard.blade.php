@@ -157,6 +157,19 @@
         color: #333;
     }
 
+    .device-card {
+  width: 400px;
+  min-height: 300px;
+  margin: 16px;
+  padding: 18px;
+  border-radius: 10px;
+  box-shadow: 0 2px 12px rgba(0,0,0,0.1);
+  background-color: white;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+}
+
     .device-card.alert {
         border: 2px solid #f5aaaa;
     }
@@ -170,18 +183,33 @@
     label img[alt="Info"]:hover {
         opacity: 1;
     }
+
+    .sensor-box-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(160px, 1fr));
+  gap: 12px;
+  margin-top: 12px;
+}
+
+.map-area {
+  height: 400px;
+  width: 100%;
+  background-color: #eee;
+  border-radius: 12px;
+  margin-bottom: 24px;
+}
 </style>
 
 
     <x-slot name="header">
-        <h2 class="dashboard-title">
-            {{ __('Dashboard') }}
-        </h2>
+    <h2 class="font-semibold text-xl text-gray-800 leading-tight">
+        {{ __('Dashboard') }}
+    </h2>
     </x-slot>
 
     <div class="container">
         <div class="top-section">
-            <div class="map-area">Map Placeholder</div>
+            <div id="map" class="map-area"></div>
             <div class="device-list">
                 <h3>Devices</h3>
                 <ul id="device-list"></ul>
@@ -192,191 +220,177 @@
     </div>
 
     <!-- Firebase SDK -->
+
     <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
 
     <script>
         const firebaseConfig = {
-            apiKey: "{{ env('FIREBASE_CLIENT_API_KEY') }}",
-            authDomain: "{{ env('FIREBASE_CLIENT_AUTH_DOMAIN') }}",
-            databaseURL: "{{ env('FIREBASE_CLIENT_DATABASE_URL') }}",
-            projectId: "{{ env('FIREBASE_CLIENT_PROJECT_ID') }}",
-            storageBucket: "{{ env('FIREBASE_CLIENT_STORAGE_BUCKET') }}",
-            messagingSenderId: "{{ env('FIREBASE_CLIENT_MESSAGING_SENDER_ID') }}",
-            appId: "{{ env('FIREBASE_CLIENT_APP_ID') }}"
-        };
+    apiKey: "{{ env('FIREBASE_CLIENT_API_KEY') }}",
+    authDomain: "{{ env('FIREBASE_CLIENT_AUTH_DOMAIN') }}",
+    databaseURL: "{{ env('FIREBASE_CLIENT_DATABASE_URL') }}",
+    projectId: "{{ env('FIREBASE_CLIENT_PROJECT_ID') }}",
+    storageBucket: "{{ env('FIREBASE_CLIENT_STORAGE_BUCKET') }}",
+    messagingSenderId: "{{ env('FIREBASE_CLIENT_MESSAGING_SENDER_ID') }}",
+    appId: "{{ env('FIREBASE_CLIENT_APP_ID') }}"
+  };
 
-        firebase.initializeApp(firebaseConfig);
-        const db = firebase.database();
+  firebase.initializeApp(firebaseConfig);
+  const db = firebase.database();
 
-        function getLevelClass(level) {
-            switch (level?.toLowerCase()) {
-                case 'low': return 'low-level';
-                case 'medium': return 'medium-level';
-                case 'high': return 'high-level';
-                default: return 'neutral-level';
-            }
-        }
-
-        function buildDeviceCard(deviceId, device) {
-    const sensorData = device.Sensor_Data;
-    const container = document.getElementById('device-container');
-
-    let card = document.getElementById(`device-${deviceId}`);
-    if (!card) {
-        card = document.createElement('div');
-        card.id = `device-${deviceId}`;
-        card.className = 'device-card';
-        container.appendChild(card);
+  const getLevelClass = (level) => {
+    switch ((level || "").toLowerCase()) {
+      case "safe": return "low-level";
+      case "medium": return "medium-level";
+      case "unhealthy": return "medium-level";
+      case "very unhealthy":
+      case "critical":
+        return "high-level";
+      default: return "neutral-level";
     }
+  };
 
-    const isLocked = device.Device_Setting.Lock_Device === true;
-    const alert = Object.values(sensorData).some(val => val === "High");
+const buildDeviceCard = (deviceId, device) => {
+  const sensorData = device.SENSOR_DATA || {};
+  const setting = device.DEVICE_SETTING || {};
+  const container = document.getElementById("device-container");
 
-    // Apply alert class for light red border
-    card.className = `device-card${alert ? ' alert' : ''}`;
+  let card = document.getElementById(`device-${deviceId}`);
+  if (!card) {
+    card = document.createElement("div");
+    card.id = `device-${deviceId}`;
+    card.className = "device-card";
+    container.appendChild(card);
+  }
 
-    const mode = device.Device_Setting.Display_Name_Mode || "device";
-    const displayName = mode === "location"
-    ? device.Device_Setting.Location_Name
-    : device.Device_Setting.Device_Name;
+  const displayNameMode = setting.Display_Name_Mode || "device";
+  const displayName =
+    displayNameMode === "location" ? setting.Location_Name : setting.Device_Name;
 
-    card.innerHTML = `
-        <div style="display: flex; justify-content: space-between; align-items: center;">
-            <h4 style="margin: 0;">${displayName}</h4>
-            <div style="display: flex; align-items: center; gap: 6px;">
-                ${isLocked ? '<img src="/icons/lock.png" alt="Locked" style="width: 16px;" />' : ''}
-                <button onclick="openSettings('${deviceId}')" title="Device Settings" style="background: none; border: none; cursor: pointer;">
-                    <img src="/icons/gear.png" alt="Settings" style="width: 18px; height: 18px;" />
-                </button>
-            </div>
+  const hasAlert = Object.values(sensorData).some(
+    (sensor) =>
+      sensor?.Level &&
+      ["Unhealthy", "Very Unhealthy", "Critical"].includes(sensor.Level)
+  );
+
+  card.className = `device-card${hasAlert ? " alert" : ""}`;
+
+  card.innerHTML = `
+    <div style="display: flex; justify-content: space-between; align-items: center;">
+      <h4 style="margin: 0;">${displayName}</h4>
+      <div style="display: flex; align-items: center; gap: 6px;">
+        <button onclick="openSettings('${deviceId}')" style="background: none; border: none; cursor: pointer;">
+          <img src="/icons/gear.png" alt="Settings" style="width: 18px; height: 18px;" />
+        </button>
+      </div>
+    </div>
+    <div class="sensor-box-grid">
+      ${Object.entries(sensorData).map(([type, info]) => `
+        <div class="sensor-box ${getLevelClass(info.Level)}">
+          <strong>${info.Label}</strong>
+          <div>${info.Value}</div>
+          <small>(${info.Level})</small>
         </div>
-        <div class="sensor-box-grid">
-            ${['CO2', 'CO-LPG', 'General', 'SO2-H2S'].map(key => `
-                <div id="box-${key.toLowerCase()}-${deviceId}" class="sensor-box ${getLevelClass(sensorData[`${key}-LVL`])}">
-                    <strong>${key}</strong>
-                    <div id="${key.toLowerCase()}-${deviceId}">${sensorData[key]}</div>
-                    <small id="${key.toLowerCase()}lvl-${deviceId}">(${sensorData[`${key}-LVL`]})</small>
-                </div>
-            `).join('')}
-        </div>
-    `;
-}
+      `).join("")}
+    </div>
+  `;
+};
 
+  const updateDeviceList = (devices) => {
+    const deviceList = document.getElementById("device-list");
+    deviceList.innerHTML = "";
 
-    function updateDeviceList(devices) {
-    const deviceList = document.getElementById('device-list');
-    deviceList.innerHTML = '';
+    const getAlertScore = (sensorData) =>
+      Object.values(sensorData || {}).some((sensor) =>
+        ["Unhealthy", "Very Unhealthy", "Critical"].includes(sensor?.Level)
+      );
 
-    const sortedDevices = Object.entries(devices).sort(([, a], [, b]) => {
-    const aLock = a.Device_Setting.Lock_Device === true;
-    const bLock = b.Device_Setting.Lock_Device === true;
-    const aAlert = Object.values(a.Sensor_Data).some(val => val === "High");
-    const bAlert = Object.values(b.Sensor_Data).some(val => val === "High");
-
-    const score = (locked, alert) => {
-        if (locked && alert) return 3;   // 🔐 Locked + Alert
-        if (locked) return 2;            // 🔐 Locked Only
-        if (alert) return 1;             // ⚠️ Alert Only
-        return 0;                        // 🟢 Normal
+    const sortScore = (locked, alert) => {
+      if (locked && alert) return 3;
+      if (locked) return 2;
+      if (alert) return 1;
+      return 0;
     };
 
-    return score(bLock, bAlert) - score(aLock, aAlert);
-});
-
-    sortedDevices.forEach(([deviceId, device]) => {
-        const { Device_Name, Location_Name, Display_Name_Mode, Lock_Device } = device.Device_Setting;
-        const alert = Object.values(device.Sensor_Data).some(val => val === "High");
-
-        // Choose display name based on mode
-        const displayName = Display_Name_Mode === "location" ? Location_Name : Device_Name;
-
-        const li = document.createElement('li');
-        li.id = `device-name-${deviceId}`;
-        li.className = alert ? "alert" : "";
-        li.style.display = "flex";
-        li.style.justifyContent = "space-between";
-        li.style.alignItems = "center";
-
-        li.innerHTML = `
-            <span>${displayName}</span>
-            ${Lock_Device ? '<img src="/icons/lock.png" alt="Locked" style="width: 16px;" />' : ''}
-        `;
-
-        deviceList.appendChild(li);
+    const sorted = Object.entries(devices).sort(([, a], [, b]) => {
+      const sa = a.DEVICE_SETTING || {};
+      const sb = b.DEVICE_SETTING || {};
+      const la = sa.Lock_Device === true;
+      const lb = sb.Lock_Device === true;
+      const aa = getAlertScore(a.SENSOR_DATA);
+      const ab = getAlertScore(b.SENSOR_DATA);
+      return sortScore(lb, ab) - sortScore(la, aa);
     });
-}
 
-        db.ref("DEVICES").on("value", (snapshot) => {
-    const devices = snapshot.val();
-    const deviceList = document.getElementById('device-list');
-    const container = document.getElementById('device-container');
+    sorted.forEach(([deviceId, device]) => {
+      const setting = device.DEVICE_SETTING || {};
+      const { Device_Name = "Unnamed", Location_Name = "", Display_Name_Mode = "device" } = setting;
+      const name = Display_Name_Mode === "location" ? Location_Name : Device_Name;
+      const isAlert = getAlertScore(device.SENSOR_DATA);
 
-    deviceList.innerHTML = '';
-    container.innerHTML = '';
+      const li = document.createElement("li");
+      li.id = `device-name-${deviceId}`;
+      li.className = isAlert ? "alert" : "";
+      li.style.display = "flex";
+      li.style.justifyContent = "space-between";
+      li.style.alignItems = "center";
+      li.innerHTML = `<span>${name}</span>`;
+      deviceList.appendChild(li);
+    });
+  };
 
-    if (!devices) {
-        deviceList.innerHTML = '<li>No devices found.</li>';
-        container.innerHTML = '<p style="padding: 20px; color: #888;">No devices to display.</p>';
-        return;
+  db.ref("DEVICES").on("value", (snapshot) => {
+    const devices = snapshot.val() || {};
+    const deviceList = document.getElementById("device-list");
+    const container = document.getElementById("device-container");
+
+    deviceList.innerHTML = "";
+    container.innerHTML = "";
+
+    if (Object.keys(devices).length === 0) {
+      deviceList.innerHTML = "<li>No devices found.</li>";
+      container.innerHTML = "<p style='padding: 20px; color: #888;'>No devices to display.</p>";
+      return;
     }
 
     updateDeviceList(devices);
+    Object.entries(devices).forEach(([deviceId, device]) => buildDeviceCard(deviceId, device));
+  });
 
-    const sortedDevices = Object.entries(devices).sort(([, a], [, b]) => {
-    const aLock = a.Device_Setting.Lock_Device === true;
-    const bLock = b.Device_Setting.Lock_Device === true;
+  function openSettings(deviceId) {
+    const ref = db.ref(`DEVICES/${deviceId}/DEVICE_SETTING`);
+    ref.once("value").then((snapshot) => {
+      const setting = snapshot.val();
+      if (!setting) return;
 
-    const aAlert = Object.values(a.Sensor_Data).some(val => val === "High");
-    const bAlert = Object.values(b.Sensor_Data).some(val => val === "High");
+      document.getElementById("setting-device-name-text").textContent = setting.Device_Name || "";
+    document.getElementById("setting-device-name-input").value = setting.Device_Name || "";
 
-    const getPriority = (lock, alert) => {
-        if (lock && alert) return 3;
-        if (lock) return 2;
-        if (alert) return 1;
-        return 0;
-    };
+    document.getElementById("edit-device-name-btn").setAttribute("data-id", deviceId);
+document.getElementById("save-device-name-btn").setAttribute("data-id", deviceId);
+      document.getElementById("setting-location-text").textContent = setting.Location_Name || "";
+      document.getElementById("setting-location-input").value = setting.Location_Name || "";
 
-    return getPriority(bLock, bAlert) - getPriority(aLock, aAlert);
-});
+      document.getElementById("setting-lat").textContent = setting.Latitude || "";
+      document.getElementById("setting-lng").textContent = setting.Longitude || "";
+      document.getElementById("setting-radius-text").textContent = setting.Radius || "";
+      document.getElementById("setting-radius-input").value = setting.Radius || "";
 
-    sortedDevices.forEach(([deviceId, device]) => {
-        buildDeviceCard(deviceId, device);
+      document.getElementById("edit-location-btn").setAttribute("data-id", deviceId);
+      document.getElementById("save-location-btn").setAttribute("data-id", deviceId);
+      document.getElementById("edit-radius-btn").setAttribute("data-id", deviceId);
+      document.getElementById("save-radius-btn").setAttribute("data-id", deviceId);
+      
+
+      document.getElementById("modal-overlay").classList.add("show");
+      document.getElementById("settings-modal").classList.add("show");
     });
-});
+  }
 
-        function openSettings(deviceId) {
-            const dbRef = db.ref(`DEVICES/${deviceId}/Device_Setting`);
-            dbRef.once("value").then(snapshot => {
-        const settings = snapshot.val();
-        if (!settings) return;
-
-        document.getElementById('setting-name').textContent = settings.Device_Name || '';
-
-        document.getElementById('setting-location-text').textContent = settings.Location_Name || '';
-        document.getElementById('setting-location-input').value = settings.Location_Name || '';
-        document.getElementById('edit-location-btn').setAttribute('data-id', deviceId);
-        document.getElementById('save-location-btn').setAttribute('data-id', deviceId);
-
-        document.getElementById('setting-lat').textContent = settings.Latitude || '';
-        document.getElementById('setting-lng').textContent = settings.Longitude || '';
-        document.getElementById('setting-radius-text').textContent = settings.Radius || '';
-        document.getElementById('setting-radius-input').value = settings.Radius || '';
-        document.getElementById('edit-radius-btn').setAttribute('data-id', deviceId);
-        document.getElementById('save-radius-btn').setAttribute('data-id', deviceId);
-        document.getElementById('lock-status').textContent = settings.Lock_Device ? "On" : "Off";
-        document.getElementById('lock-toggle').setAttribute('data-id', deviceId);
-
-        document.getElementById('modal-overlay').classList.add('show');
-        document.getElementById('settings-modal').classList.add('show');
-
-        document.getElementById('name-status').textContent = 
-        settings.Display_Name_Mode === "location" ? "Location" : "Device";
-
-        document.getElementById('name-toggle').setAttribute('data-id', deviceId);
-
-        });
-    }
+  function closeModal() {
+    document.getElementById("modal-overlay").classList.remove("show");
+    document.getElementById("settings-modal").classList.remove("show");
+  }
 
 function confirmDeleteDevice() {
     document.getElementById('settings-modal').classList.remove('show');
@@ -410,7 +424,7 @@ function toggleRadiusEdit() {
 function saveRadius() {
     const deviceId = document.getElementById('save-radius-btn').getAttribute('data-id');
     const newRadius = parseInt(document.getElementById('setting-radius-input').value);
-    const ref = db.ref(`DEVICES/${deviceId}/Device_Setting`);
+    const ref = db.ref(`DEVICES/${deviceId}/DEVICE_SETTING`);
 
     if (!isNaN(newRadius)) {
         ref.update({ Radius: newRadius }).then(() => {
@@ -433,7 +447,7 @@ function toggleLocationEdit() {
 function saveLocationName() {
     const deviceId = document.getElementById('save-location-btn').getAttribute('data-id');
     const newLocation = document.getElementById('setting-location-input').value;
-    const ref = db.ref(`DEVICES/${deviceId}/Device_Setting`);
+    const ref = db.ref(`DEVICES/${deviceId}/DEVICE_SETTING`);
 
     ref.update({ Location_Name: newLocation }).then(() => {
         document.getElementById('setting-location-text').textContent = newLocation;
@@ -444,39 +458,77 @@ function saveLocationName() {
     });
 }
 
-function toggleNameMode() {
-    const deviceId = document.getElementById('name-toggle').getAttribute('data-id');
-    const ref = db.ref(`DEVICES/${deviceId}/Device_Setting`);
-
-    ref.once("value").then(snapshot => {
-        const current = snapshot.val().Display_Name_Mode || "device";
-        const newMode = current === "device" ? "location" : "device";
-
-        ref.update({ Display_Name_Mode: newMode });
-        document.getElementById('name-status').textContent = 
-            newMode === "location" ? "Location" : "Device";
-    });
+function toggleDeviceNameEdit() {
+  document.getElementById('setting-device-name-text').style.display = "none";
+  document.getElementById('setting-device-name-input').style.display = "inline-block";
+  document.getElementById('edit-device-name-btn').style.display = "none";
+  document.getElementById('save-device-name-btn').style.display = "inline-block";
 }
 
-function toggleLock() {
-    const deviceId = document.getElementById('lock-toggle').getAttribute('data-id');
-    const ref = db.ref(`DEVICES/${deviceId}/Device_Setting`);
+function saveDeviceName() {
+  const deviceId = document.getElementById('save-device-name-btn').getAttribute('data-id');
+  const newName = document.getElementById('setting-device-name-input').value;
+  const ref = db.ref(`DEVICES/${deviceId}/DEVICE_SETTING`);
 
-    ref.once("value").then(snapshot => {
-        const current = snapshot.val().Lock_Device || false;
-        ref.update({ Lock_Device: !current });
+  ref.update({ Device_Name: newName }).then(() => {
+    document.getElementById('setting-device-name-text').textContent = newName;
+    document.getElementById('setting-device-name-input').style.display = "none";
+    document.getElementById('setting-device-name-text').style.display = "inline-block";
+    document.getElementById('edit-device-name-btn').style.display = "inline-block";
+    document.getElementById('save-device-name-btn').style.display = "none";
+  });
+}
+ 
+//maps
 
-        document.getElementById('lock-status').textContent = !current ? "On" : "Off";
+async function initMap() {
+  const { Map } = await google.maps.importLibrary("maps");
+  const { AdvancedMarkerElement } = await google.maps.importLibrary("marker");
+
+  const map = new Map(document.getElementById("map"), {
+    center: { lat: 14.2695, lng: 121.0994 }, // Binãn default
+    zoom: 14,
+    mapId: "YOUR_MAP_ID", // Replace with your actual map ID
+    mapTypeControl: false,
+    streetViewControl: false,
+    fullscreenControl: false,
+  });
+
+  const ref = firebase.database().ref("DEVICES");
+  const snapshot = await ref.once("value");
+  const devices = snapshot.val();
+
+  if (!devices) return;
+
+  Object.entries(devices).forEach(([deviceId, device]) => {
+    const setting = device.DEVICE_SETTING;
+    if (!setting) return;
+
+    const lat = parseFloat(setting.Latitude);
+    const lng = parseFloat(setting.Longitude);
+    const label = setting.Location_Name || setting.Device_Name || deviceId;
+
+    if (isNaN(lat) || isNaN(lng)) return;
+
+    new AdvancedMarkerElement({
+      map,
+      position: { lat, lng },
+      title: label
     });
+  });
 }
 
-        function closeModal() {
-            document.getElementById('modal-overlay').classList.remove('show');
-            document.getElementById('settings-modal').classList.remove('show');
-        }
+// Trigger map init after page load
+window.addEventListener("load", initMap);
 
-        
     </script>
+
+<script
+  src="https://maps.googleapis.com/maps/api/js?key={{ env('GOOGLE_MAPS_API_KEY') }}&loading=async&callback=initMap&v=weekly&libraries=marker"
+  defer
+></script>
+
+
 
     
     <div id="modal-overlay" class="modal-overlay" onclick="closeModal()"></div>
@@ -485,8 +537,11 @@ function toggleLock() {
     <h3 style="margin-top: 0; margin-bottom: 20px;">Device Settings</h3>
     <div id="settings-content">
         <p>
-            <strong>Name:</strong> 
-            <span id="setting-name"></span>
+            <strong>Device Name:</strong>
+            <span id="setting-device-name-text"></span>
+            <input type="text" id="setting-device-name-input" style="display: none;" />
+            <button id="edit-device-name-btn" onclick="toggleDeviceNameEdit()">Change</button>
+            <button id="save-device-name-btn" onclick="saveDeviceName()" style="display: none;">Save</button>
         </p>
         <p>
             <strong>Location:</strong>
@@ -510,29 +565,6 @@ function toggleLock() {
             <button id="edit-radius-btn" onclick="toggleRadiusEdit()">Change</button>
             <button id="save-radius-btn" onclick="saveRadius()" style="display: none;">Save</button>
         </p>
-        <div class="toggle-section">
-            <p>
-                <label style="display: flex; align-items: center; gap: 6px;">
-                    <strong>Lock Device:</strong>
-                    <img src="/icons/question.png" alt="Info" title="This toggle prioritizes how devices are sorted: Locked + High Alert > Locked > High Alert > Everything else." 
-                        style="width: 16px; cursor: help;" />
-                    
-                </label>
-                <button onclick="toggleLock()" id="lock-toggle">Toggle</button>
-                <span id="lock-status" style="font-weight: bold;"></span>
-            </p>
-            <p>
-                <label style="display: flex; align-items: center; gap: 6px;">
-                    <strong>Name Display:</strong>
-                    <img src="/icons/question.png" alt="Info" title="This toggle controls whether you see the device ID or its location name in the dashboard." 
-                        style="width: 16px; cursor: help;" />
-                    
-                </label>
-                <button onclick="toggleNameMode()" id="name-toggle">Toggle</button>
-                <span id="name-status" style="font-weight: bold;"></span>
-            </p>
-        </div>
-        
         <div class="modal-actions">
     <button onclick="confirmDeleteDevice()" class="delete-btn">Delete Device</button>
     <button onclick="closeModal()" class="close-btn">Close</button>
