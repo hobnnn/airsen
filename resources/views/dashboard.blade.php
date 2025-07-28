@@ -444,6 +444,7 @@
     deviceList.appendChild(li);
 
     li.addEventListener("click", () => {
+    clearMapVisuals();
   const device = devices[deviceId];
   const deviceLatLng = new google.maps.LatLng(parseFloat(device.DEVICE_SETTING.Latitude), parseFloat(device.DEVICE_SETTING.Longitude));
   const evacLatLng = new google.maps.LatLng(parseFloat(device.EVACUATION_DATA.Latitude), parseFloat(device.EVACUATION_DATA.Longitude));
@@ -608,6 +609,9 @@
         let map;
         const markerMap = {};
         const circleMap = {};
+
+        let activePathPolyline = null;
+        let activeEvacMarker = null;
 
         async function initMap() {
             const {
@@ -839,6 +843,30 @@
     // Zoom & focus both
     map.fitBounds(mapBounds);
 }
+
+function clearMapVisuals() {
+  // 🧹 Clear old path
+  if (activePathPolyline) {
+    activePathPolyline.setMap(null);
+    activePathPolyline = null;
+  }
+
+  // 🧹 Clear evac marker from markerMap
+  Object.keys(markerMap)
+    .filter(key => key.startsWith("evac-"))
+    .forEach(key => {
+      markerMap[key].marker.setMap(null);
+      delete markerMap[key];
+    });
+
+  // 🧹 Clear evac circle from circleMap
+  Object.keys(circleMap)
+    .filter(key => key.startsWith("evac-"))
+    .forEach(key => {
+      circleMap[key].setMap(null);
+      delete circleMap[key];
+    });
+}
         
 function fetchAnimatedPath(deviceLatLng, evacLatLng) {
   const directionsService = new google.maps.DirectionsService();
@@ -857,7 +885,7 @@ function fetchAnimatedPath(deviceLatLng, evacLatLng) {
 
 function drawAnimatedPolyline(path) {
   let step = 0;
-  const trail = new google.maps.Polyline({
+  activePathPolyline = new google.maps.Polyline({
     path: [],
     geodesic: true,
     strokeColor: "#4A90E2",
@@ -868,9 +896,9 @@ function drawAnimatedPolyline(path) {
 
   function animateTrail() {
     if (step < path.length) {
-      trail.setPath([...trail.getPath().getArray(), path[step]]);
+      activePathPolyline.setPath([...activePathPolyline.getPath().getArray(), path[step]]);
       step++;
-      setTimeout(animateTrail, 120); // ⏳ Slow down the flow
+      setTimeout(animateTrail, 120);
     }
   }
 
