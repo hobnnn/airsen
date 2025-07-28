@@ -442,6 +442,15 @@
     });
 
     deviceList.appendChild(li);
+
+    li.addEventListener("click", () => {
+  const device = devices[deviceId];
+  const deviceLatLng = new google.maps.LatLng(parseFloat(device.DEVICE_SETTING.Latitude), parseFloat(device.DEVICE_SETTING.Longitude));
+  const evacLatLng = new google.maps.LatLng(parseFloat(device.EVACUATION_DATA.Latitude), parseFloat(device.EVACUATION_DATA.Longitude));
+
+  focusDeviceAndEvacuation(deviceId, device); // optional for map centering
+  fetchAnimatedPath(deviceLatLng, evacLatLng); // 🌀 Animate the path
+});
   });
 }
         db.ref("DEVICES").on("value", (snapshot) => {
@@ -770,6 +779,103 @@
           if (radiusMeters <= 1000) return 15;
           return 14;
         }
+        
+        function focusDeviceAndEvacuation(deviceId, device) {
+    const deviceSetting = device.DEVICE_SETTING || {};
+    const evacData = device.EVACUATION_DATA || {};
+    const mapBounds = new google.maps.LatLngBounds();
+
+    // Device position
+    if (deviceSetting.Latitude && deviceSetting.Longitude) {
+        const deviceLatLng = new google.maps.LatLng(
+            parseFloat(deviceSetting.Latitude),
+            parseFloat(deviceSetting.Longitude)
+        );
+        mapBounds.extend(deviceLatLng);
+    }
+
+    // Evacuation zone position
+    if (evacData.Latitude && evacData.Longitude) {
+        const evacLatLng = new google.maps.LatLng(
+            parseFloat(evacData.Latitude),
+            parseFloat(evacData.Longitude)
+        );
+        mapBounds.extend(evacLatLng);
+
+        // 💡 Create marker for evacuation zone
+        if (!markerMap[`evac-${deviceId}`]) {
+            const evacMarker = new google.maps.Marker({
+                map,
+                position: evacLatLng,
+                title: evacData.SchoolName || "Evacuation Zone",
+                icon: {
+                    url: "https://maps.google.com/mapfiles/ms/icons/blue-dot.png", // 🎯 Differentiate from device
+                    scaledSize: new google.maps.Size(32, 32)
+                }
+            });
+            markerMap[`evac-${deviceId}`] = { marker: evacMarker };
+        } else {
+            markerMap[`evac-${deviceId}`].marker.setPosition(evacLatLng);
+        }
+
+        // Optional: Draw circle for evac zone
+        if (!circleMap[`evac-${deviceId}`]) {
+            const evacCircle = new google.maps.Circle({
+                map,
+                center: evacLatLng,
+                radius: 100,
+                strokeColor: "#337ab7",
+                fillColor: "#cce5ff",
+                fillOpacity: 0.25,
+                strokeOpacity: 0.7,
+                strokeWeight: 2,
+            });
+            circleMap[`evac-${deviceId}`] = evacCircle;
+        } else {
+            circleMap[`evac-${deviceId}`].setCenter(evacLatLng);
+        }
+    }
+
+    // Zoom & focus both
+    map.fitBounds(mapBounds);
+}
+        
+function fetchAnimatedPath(deviceLatLng, evacLatLng) {
+  const directionsService = new google.maps.DirectionsService();
+
+  directionsService.route({
+    origin: deviceLatLng,
+    destination: evacLatLng,
+    travelMode: google.maps.TravelMode.WALKING
+  }, (result, status) => {
+    if (status === "OK") {
+      const path = result.routes[0].overview_path;
+      drawAnimatedPolyline(path);
+    }
+  });
+}
+
+function drawAnimatedPolyline(path) {
+  let step = 0;
+  const trail = new google.maps.Polyline({
+    path: [],
+    geodesic: true,
+    strokeColor: "#4A90E2",
+    strokeOpacity: 0.6,
+    strokeWeight: 6,
+    map: map
+  });
+
+  function animateTrail() {
+    if (step < path.length) {
+      trail.setPath([...trail.getPath().getArray(), path[step]]);
+      step++;
+      setTimeout(animateTrail, 120); // ⏳ Slow down the flow
+    }
+  }
+
+  animateTrail();
+}
 
     </script>
 

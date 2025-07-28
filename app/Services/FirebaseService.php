@@ -14,7 +14,7 @@ class FirebaseService
         $path = base_path(env('FIREBASE_CREDENTIALS'));
 
         if (!file_exists($path)) {
-            throw new \Exception("Firebase credentials file does not exist at path: $path");
+            throw new Exception("Firebase credentials file does not exist at path: $path");
         }
 
         $factory = (new Factory)

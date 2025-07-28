@@ -215,4 +215,49 @@ deviceLabel.textContent = `${uidFull} — ${name} — Radius: ${radius}m`;
     loadHighAlertDevices();
   </script>
 
+  <script>
+  const ALERT_SCAN_INTERVAL_MS = 1800000; // ⏱ 30 1800000 60000
+
+  function checkAndLogAlerts() {
+    db.ref("DEVICES").once("value").then(snapshot => {
+      const devices = snapshot.val();
+      if (!devices) return;
+
+      Object.entries(devices).forEach(([deviceId, device]) => {
+        const UID = device?.DEVICE_SETTING?.Device_UID || deviceId;
+        const safeUID = UID.replace(/[.#$[\]/]/g, "_");
+        const sensors = device?.SENSOR_DATA || {};
+
+        Object.entries(sensors).forEach(([sensorType, sensorData]) => {
+          if (typeof sensorData !== "object") return;
+
+          const level = sensorData.Level;
+          const value = sensorData.Value;
+          const label = sensorData.Label || sensorType;
+
+          if (ALERT_LEVELS.includes(level)) {
+            const timestamp = new Date().toISOString();
+            const safeTimestamp = timestamp.replace(/[.#$[\]/:]/g, "_");
+            const safeSensor = sensorType.replace(/[.#$[\]/]/g, "_");
+
+            const logData = {
+              Sensor_Label: label,
+              Sensor_Value: value,
+              Sensor_Level: level,
+              Timestamp: timestamp
+            };
+
+            const path = `HIGH_ALERT_LOGS/${safeUID}/${safeSensor}/${safeTimestamp}`;
+            db.ref(path).set(logData);
+          }
+        });
+      });
+    });
+  }
+
+  // 🔁 Start scanning loop every 30 minutes — no initial trigger
+  setInterval(checkAndLogAlerts, ALERT_SCAN_INTERVAL_MS);
+
+  
+</script>
 </x-app-layout>
