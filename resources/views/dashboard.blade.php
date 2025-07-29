@@ -30,8 +30,9 @@
             transform: translate(-50%, -50%) scale(0.95);
             background-color: #fff;
             padding: 24px;
-            width: 360px;
-            max-width: 90vw;
+             width: 480px;      /* ← Increased from 360px */
+            max-width: 96vw;
+            min-height: 460px;
             border-radius: 12px;
             box-shadow: 0 6px 30px rgba(0, 0, 0, 0.35);
             opacity: 0;
@@ -277,6 +278,37 @@
             background-color: #d9fdd9;
             color: #006600;
         }
+
+.button-basic {
+  padding: 10px 20px;
+  font-size: 14px;
+  border-radius: 8px;
+  border: 1px solid #ccc;
+  background-color: #f5f5f5;
+  color: #333;
+  cursor: pointer;
+  font-weight: 500;
+  transition: background-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.button-basic:hover {
+  background-color: #e5e5e5;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.06);
+}
+
+.button-basic:active {
+  background-color: #dcdcdc;
+}
+
+.button-basic.save {
+  border: 1px solid #3c8dbc;
+  background-color: #3c8dbc;
+  color: #fff;
+}
+
+.button-basic.save:hover {
+  background-color: #337ab7;
+}
     </style>
 
 
@@ -444,14 +476,29 @@
     deviceList.appendChild(li);
 
     li.addEventListener("click", () => {
-    clearMapVisuals();
-  const device = devices[deviceId];
-  const deviceLatLng = new google.maps.LatLng(parseFloat(device.DEVICE_SETTING.Latitude), parseFloat(device.DEVICE_SETTING.Longitude));
-  const evacLatLng = new google.maps.LatLng(parseFloat(device.EVACUATION_DATA.Latitude), parseFloat(device.EVACUATION_DATA.Longitude));
+  clearMapVisuals();
 
-  focusDeviceAndEvacuation(deviceId, device); // optional for map centering
-  fetchAnimatedPath(deviceLatLng, evacLatLng); // 🌀 Animate the path
+  const device = devices[deviceId];
+  const deviceSetting = device.DEVICE_SETTING || {};
+  const evacData = device.EVACUATION_DATA || {};
+
+  const deviceLatLng = new google.maps.LatLng(parseFloat(deviceSetting.Latitude), parseFloat(deviceSetting.Longitude));
+  const evacLatLng = new google.maps.LatLng(parseFloat(evacData.Latitude), parseFloat(evacData.Longitude));
+
+if (!evacData || !evacData.Latitude || !evacData.Longitude || !evacData.Evacuation_Center) {
+  showEvacInfoBox("Please assign an evacuation zone to view this device's route.");
+  return; // 🚫 Exit early to avoid errors
+}
+
+  focusDeviceAndEvacuation(deviceId, device); // Optional centering
+  fetchAnimatedPath(deviceLatLng, evacLatLng); // 🌀 Animated path
+
+  // 🏷️ Add fresh labels
+activeDeviceLabel = createInlineLabel(deviceLatLng, deviceSetting.Location_Name || "Device", map);
+activeEvacLabel = createInlineLabel(evacLatLng, evacData.Evacuation_Center  || "Evacuation Zone", map);
+
 });
+
   });
 }
         db.ref("DEVICES").on("value", (snapshot) => {
@@ -475,35 +522,73 @@
 
 
 
-        function openSettings(deviceId) {
-            const ref = db.ref(`DEVICES/${deviceId}/DEVICE_SETTING`);
-            ref.once("value").then((snapshot) => {
-                const setting = snapshot.val();
-                if (!setting) return;
+function openSettings(deviceId) {
+  const deviceSettingRef = db.ref(`DEVICES/${deviceId}/DEVICE_SETTING`);
+  const evacDataRef = db.ref(`DEVICES/${deviceId}/EVACUATION_DATA`);
 
-                document.getElementById("setting-device-name-text").textContent = setting.Device_Name || "";
-                document.getElementById("setting-device-name-input").value = setting.Device_Name || "";
+  deviceSettingRef.once("value").then((snapshot) => {
+    const setting = snapshot.val() || {};
 
-                document.getElementById("edit-device-name-btn").setAttribute("data-id", deviceId);
-                document.getElementById("save-device-name-btn").setAttribute("data-id", deviceId);
-                document.getElementById("setting-location-text").textContent = setting.Location_Name || "";
-                document.getElementById("setting-location-input").value = setting.Location_Name || "";
+    // ⚙️ Set basic device settings
+    document.getElementById("setting-device-name-text").textContent = setting.Device_Name || "";
+    document.getElementById("setting-device-name-input").value = setting.Device_Name || "";
 
-                document.getElementById("setting-lat").textContent = setting.Latitude || "";
-                document.getElementById("setting-lng").textContent = setting.Longitude || "";
-                document.getElementById("setting-radius-text").textContent = setting.Radius || "";
-                document.getElementById("setting-radius-input").value = setting.Radius || "";
+    document.getElementById("edit-device-name-btn").setAttribute("data-id", deviceId);
+    document.getElementById("save-device-name-btn").setAttribute("data-id", deviceId);
 
-                document.getElementById("edit-location-btn").setAttribute("data-id", deviceId);
-                document.getElementById("save-location-btn").setAttribute("data-id", deviceId);
-                document.getElementById("edit-radius-btn").setAttribute("data-id", deviceId);
-                document.getElementById("save-radius-btn").setAttribute("data-id", deviceId);
+    document.getElementById("setting-location-text").textContent = setting.Location_Name || "";
+    document.getElementById("setting-location-input").value = setting.Location_Name || "";
 
+    document.getElementById("setting-lat").textContent = setting.Latitude || "";
+    document.getElementById("setting-lng").textContent = setting.Longitude || "";
 
-                document.getElementById("modal-overlay").classList.add("show");
-                document.getElementById("settings-modal").classList.add("show");
-            });
-        }
+    document.getElementById("setting-radius-text").textContent = setting.Radius || "";
+    document.getElementById("setting-radius-input").value = setting.Radius || "";
+
+    document.getElementById("edit-location-btn").setAttribute("data-id", deviceId);
+    document.getElementById("save-location-btn").setAttribute("data-id", deviceId);
+    document.getElementById("edit-radius-btn").setAttribute("data-id", deviceId);
+    document.getElementById("save-radius-btn").setAttribute("data-id", deviceId);
+
+    // 🧭 Load evacuation center info
+    evacDataRef.once("value").then(evacSnap => {
+      const evacData = evacSnap.val() || {};
+      const evacName = evacData.Evacuation_Center || "";
+      const evacLat = evacData.Latitude;
+      const evacLng = evacData.Longitude;
+
+      const evacDisplay = document.getElementById("evacuation-display");
+      const evacButton = document.getElementById("evacuation-button");
+
+      if (evacDisplay && evacButton) {
+        const hasEvacData = evacName && evacLat && evacLng;
+
+        evacDisplay.textContent = evacName || "—";
+        evacButton.textContent = hasEvacData ? "Edit Evacuation Center" : "Add Evacuation Center";
+      }
+    });
+
+    // 🪟 Show modal
+    document.getElementById("modal-overlay").classList.add("show");
+    document.getElementById("settings-modal").classList.add("show");
+  });
+
+  window.currentDeviceId = deviceId;
+
+  const clearButton = document.querySelector("#settings-content .btn.clear");
+
+evacDataRef.once("value").then(evacSnap => {
+  const evacData = evacSnap.val() || {};
+  const hasEvacData = evacData.Evacuation_Center && evacData.Latitude && evacData.Longitude;
+
+  if (clearButton) {
+    clearButton.disabled = !hasEvacData;
+    clearButton.style.opacity = hasEvacData ? "1" : "0.5";
+    clearButton.style.cursor = hasEvacData ? "pointer" : "not-allowed";
+  }
+});
+
+}
 
         function closeModal() {
             document.getElementById("modal-overlay").classList.remove("show");
@@ -612,6 +697,9 @@
 
         let activePathPolyline = null;
         let activeEvacMarker = null;
+
+        let activeDeviceLabel = null;
+        let activeEvacLabel = null;
 
         async function initMap() {
             const {
@@ -784,7 +872,7 @@
           return 14;
         }
         
-        function focusDeviceAndEvacuation(deviceId, device) {
+    function focusDeviceAndEvacuation(deviceId, device) {
     const deviceSetting = device.DEVICE_SETTING || {};
     const evacData = device.EVACUATION_DATA || {};
     const mapBounds = new google.maps.LatLngBounds();
@@ -811,7 +899,7 @@
             const evacMarker = new google.maps.Marker({
                 map,
                 position: evacLatLng,
-                title: evacData.SchoolName || "Evacuation Zone",
+                title: evacData.Evacuation_Center  || "Evacuation Zone",
                 icon: {
                     url: "https://maps.google.com/mapfiles/ms/icons/blue-dot.png", // 🎯 Differentiate from device
                     scaledSize: new google.maps.Size(32, 32)
@@ -827,7 +915,7 @@
             const evacCircle = new google.maps.Circle({
                 map,
                 center: evacLatLng,
-                radius: 100,
+                radius: 50,
                 strokeColor: "#337ab7",
                 fillColor: "#cce5ff",
                 fillOpacity: 0.25,
@@ -844,14 +932,58 @@
     map.fitBounds(mapBounds);
 }
 
+function createInlineLabel(position, text, map) {
+  const label = new google.maps.OverlayView();
+
+  label.onAdd = function () {
+    const div = document.createElement("div");
+    div.style.position = "absolute";
+    div.style.background = "white";
+    div.style.border = "1px solid #666";
+    div.style.borderRadius = "4px";
+    div.style.padding = "2px 6px";
+    div.style.fontSize = "12px";
+    div.style.color = "#333";
+    div.style.whiteSpace = "nowrap";
+    div.style.transform = "translateX(-50%)";
+    div.style.boxShadow = "0 1px 4px rgba(0,0,0,0.3)";
+    div.style.zIndex = "999999"; // 🚀 Higher than default marker
+    div.innerText = text;
+
+    this.div = div;
+
+    // 👆 Use the floatPane for highest visual stacking
+    this.getPanes().floatPane.appendChild(div);
+  };
+
+  label.draw = function () {
+    const projection = this.getProjection();
+    const point = projection.fromLatLngToDivPixel(position);
+    if (point && this.div) {
+      this.div.style.left = `${point.x}px`;
+      this.div.style.top = `${point.y - 35}px`; // Adjust to rise above the marker
+    }
+  };
+
+  label.onRemove = function () {
+    if (this.div && this.div.parentNode) {
+      this.div.parentNode.removeChild(this.div);
+      this.div = null;
+    }
+  };
+
+  label.setMap(map);
+  return label;
+}
+
 function clearMapVisuals() {
-  // 🧹 Clear old path
+  // Clear previous path
   if (activePathPolyline) {
     activePathPolyline.setMap(null);
     activePathPolyline = null;
   }
 
-  // 🧹 Clear evac marker from markerMap
+  // Clear previous evacuation marker
   Object.keys(markerMap)
     .filter(key => key.startsWith("evac-"))
     .forEach(key => {
@@ -859,13 +991,23 @@ function clearMapVisuals() {
       delete markerMap[key];
     });
 
-  // 🧹 Clear evac circle from circleMap
+  // Clear previous evacuation circle
   Object.keys(circleMap)
     .filter(key => key.startsWith("evac-"))
     .forEach(key => {
       circleMap[key].setMap(null);
       delete circleMap[key];
     });
+
+  // 🧼 Clear previous labels
+  if (activeDeviceLabel) {
+    activeDeviceLabel.setMap(null);
+    activeDeviceLabel = null;
+  }
+  if (activeEvacLabel) {
+    activeEvacLabel.setMap(null);
+    activeEvacLabel = null;
+  }
 }
         
 function fetchAnimatedPath(deviceLatLng, evacLatLng) {
@@ -883,34 +1025,347 @@ function fetchAnimatedPath(deviceLatLng, evacLatLng) {
   });
 }
 
+let isAnimating = false;
+
 function drawAnimatedPolyline(path) {
-  let step = 0;
+  if (isAnimating) return;
+  isAnimating = true;
+
+  step = 0;
   activePathPolyline = new google.maps.Polyline({
     path: [],
     geodesic: true,
     strokeColor: "#4A90E2",
     strokeOpacity: 0.6,
     strokeWeight: 6,
-    map: map
+    map: map,
   });
 
   function animateTrail() {
-    if (step < path.length) {
-      activePathPolyline.setPath([...activePathPolyline.getPath().getArray(), path[step]]);
-      step++;
-      setTimeout(animateTrail, 120);
+    if (!activePathPolyline || step >= path.length) {
+      isAnimating = false;
+      return;
     }
+    activePathPolyline.setPath([...activePathPolyline.getPath().getArray(), path[step]]);
+    step++;
+    setTimeout(animateTrail, 120);
   }
 
   animateTrail();
 }
 
+function closeManualEvacModal() {
+  const modal = document.getElementById("manual-evac-modal");
+  const overlay = document.getElementById("modal-overlay");
+
+  modal.classList.remove("show");
+  overlay.classList.remove("show");
+}
+
+function confirmManualEvac() {
+  const deviceId = window.currentDeviceId;
+  if (!deviceId) return;
+
+  const evacName = document.getElementById("manual-evac-name").value.trim();
+  const lat = parseFloat(document.getElementById("manual-evac-lat").textContent);
+  const lng = parseFloat(document.getElementById("manual-evac-lng").textContent);
+
+  if (!evacName || isNaN(lat) || isNaN(lng)) return;
+
+  const evacRef = db.ref(`DEVICES/${deviceId}/EVACUATION_DATA`);
+  evacRef.set({
+    Evacuation_Center: evacName,
+    Latitude: lat,
+    Longitude: lng
+  }).then(() => {
+    closeManualEvacModal(); // Hide modal after saving
+  });
+}
+
+function showManualEvacModal(lat = null, lng = null) {
+  const settingsModal = document.getElementById("settings-modal");
+  if (settingsModal) settingsModal.classList.remove("show");
+
+  const overlay = document.getElementById("modal-overlay");
+  const modal = document.getElementById("manual-evac-modal");
+
+  overlay.classList.add("show");
+  modal.classList.add("show");
+
+  const mapContainer = document.getElementById("manual-evac-map");
+  mapContainer.innerHTML = ""; // 🧼 Clean slate for map
+
+  document.getElementById("evac-search-box").value = ""; // 🔄 Reset search input
+
+  const deviceId = window.currentDeviceId;
+  if (!deviceId) return;
+
+  db.ref(`DEVICES/${deviceId}/EVACUATION_DATA`).once("value").then(snapshot => {
+    const evacData = snapshot.val();
+    initManualEvacMap(lat, lng, evacData); // Pass evac data if exists
+  });
+}
+
+function initManualEvacMap(lat, lng, evacData = null) {
+  const deviceId = window.currentDeviceId;
+  const mapContainer = document.getElementById("manual-evac-map");
+  const evacNameInput = document.getElementById("manual-evac-name");
+  const evacLatDisplay = document.getElementById("manual-evac-lat");
+  const evacLngDisplay = document.getElementById("manual-evac-lng");
+  const searchBoxInput = document.getElementById("evac-search-box");
+
+  db.ref(`DEVICES/${deviceId}/DEVICE_SETTING`).once("value").then(snapshot => {
+    const setting = snapshot.val() || {};
+    const Device_Name = setting.Device_Name || "Unnamed Device";
+    const Location_Name = setting.Location_Name || "Unknown Location";
+
+    const finalLat = lat ?? parseFloat(setting.Latitude);
+    const finalLng = lng ?? parseFloat(setting.Longitude);
+    const radius = parseFloat(setting.Radius) || 100;
+
+    const safeLat = isNaN(finalLat) ? 14.5995 : finalLat;
+    const safeLng = isNaN(finalLng) ? 120.9842 : finalLng;
+
+    const map = new google.maps.Map(mapContainer, {
+      center: { lat: safeLat, lng: safeLng },
+      zoom: getZoomFromRadius(radius),
+    });
+
+    new google.maps.Circle({
+      center: { lat: safeLat, lng: safeLng },
+      radius,
+      map,
+      strokeColor: "#2196f3",
+      fillColor: "#bbdefb",
+      fillOpacity: 0.2,
+    });
+
+    const deviceLatLng = new google.maps.LatLng(safeLat, safeLng);
+
+    new google.maps.Marker({
+      position: deviceLatLng,
+      map,
+      icon: {
+        url: "https://maps.google.com/mapfiles/ms/icons/red-dot.png",
+        scaledSize: new google.maps.Size(32, 32)
+      },
+      title: `${Device_Name} - ${Location_Name}`
+    });
+
+    createInlineLabel(deviceLatLng, `${Device_Name} - ${Location_Name}`, map);
+
+    let evacMarker = null;
+
+    // 📦 Preload evacData if available
+    if (evacData?.Latitude && evacData?.Longitude && evacData?.Evacuation_Center) {
+      const evacLatLng = new google.maps.LatLng(
+        parseFloat(evacData.Latitude),
+        parseFloat(evacData.Longitude)
+      );
+
+      evacMarker = new google.maps.Marker({
+        position: evacLatLng,
+        map,
+        icon: {
+          url: "https://maps.google.com/mapfiles/ms/icons/blue-dot.png",
+          scaledSize: new google.maps.Size(32, 32)
+        },
+        title: evacData.Evacuation_Center
+      });
+
+      createInlineLabel(evacLatLng, evacData.Evacuation_Center, map);
+
+      // 🛣️ Realistic walking route
+      const directionsService = new google.maps.DirectionsService();
+      directionsService.route({
+        origin: deviceLatLng,
+        destination: evacLatLng,
+        travelMode: google.maps.TravelMode.WALKING
+      }, (result, status) => {
+        if (status === "OK") {
+          const routePath = result.routes[0].overview_path;
+          new google.maps.Polyline({
+            path: routePath,
+            map,
+            strokeColor: "#2196f3",
+            strokeWeight: 4,
+            strokeOpacity: 0.8
+          });
+        }
+      });
+
+      evacNameInput.value = evacData.Evacuation_Center;
+      evacLatDisplay.textContent = evacLatLng.lat().toFixed(6);
+      evacLngDisplay.textContent = evacLatLng.lng().toFixed(6);
+    }
+
+    // 🔵 Manual click — no label
+    map.addListener("click", e => {
+      if (evacMarker) evacMarker.setMap(null);
+
+      evacMarker = new google.maps.Marker({
+        position: e.latLng,
+        map,
+        icon: {
+          url: "https://maps.google.com/mapfiles/ms/icons/blue-dot.png",
+          scaledSize: new google.maps.Size(32, 32)
+        },
+        title: "Selected Location"
+      });
+
+      evacLatDisplay.textContent = e.latLng.lat().toFixed(6);
+      evacLngDisplay.textContent = e.latLng.lng().toFixed(6);
+      evacNameInput.value = "";
+    });
+
+    // 🔍 SearchBox — blue marker with floating label
+    if (searchBoxInput) {
+      const searchBox = new google.maps.places.SearchBox(searchBoxInput);
+      map.addListener("bounds_changed", () => {
+        searchBox.setBounds(map.getBounds());
+      });
+
+      searchBox.addListener("places_changed", () => {
+        const places = searchBox.getPlaces();
+        if (!places || places.length === 0) return;
+
+        const place = places[0];
+        const location = place.geometry?.location;
+        if (!location) return;
+
+        if (evacMarker) evacMarker.setMap(null);
+
+        const locationTitle = place.name || "Evacuation Location";
+
+        evacMarker = new google.maps.Marker({
+          position: location,
+          map,
+          icon: {
+            url: "https://maps.google.com/mapfiles/ms/icons/blue-dot.png",
+            scaledSize: new google.maps.Size(32, 32)
+          },
+          title: locationTitle
+        });
+
+        createInlineLabel(location, locationTitle, map);
+
+        map.panTo(location);
+        map.setZoom(17);
+
+        evacLatDisplay.textContent = location.lat().toFixed(6);
+        evacLngDisplay.textContent = location.lng().toFixed(6);
+        evacNameInput.value = locationTitle;
+      });
+    }
+
+    // 🧼 Reset inputs if no evacData
+    if (!evacData) {
+      evacNameInput.value = "";
+      evacLatDisplay.textContent = "--";
+      evacLngDisplay.textContent = "--";
+    }
+  });
+}
+
+function clearEvacuationData() {
+  const deviceId = window.currentDeviceId;
+  if (!deviceId) return;
+
+  // Show custom confirmation modal
+  document.getElementById("evac-clear-confirm").classList.add("show");
+}
+
+function closeEvacConfirm() {
+  document.getElementById("evac-clear-confirm").classList.remove("show");
+}
+
+function executeEvacClear() {
+  const deviceId = window.currentDeviceId;
+  if (!deviceId) return;
+
+  db.ref(`DEVICES/${deviceId}/EVACUATION_DATA`).remove()
+    .then(() => {
+      // ❌ Close all modals
+      document.getElementById("evac-clear-confirm")?.classList.remove("show");
+      document.getElementById("manual-evac-modal")?.classList.remove("show");
+      document.getElementById("settings-modal")?.classList.remove("show");
+      document.getElementById("modal-overlay")?.classList.remove("show");
+
+      // 🧹 Reset input fields
+      document.getElementById("evac-search-box").value = "";
+      document.getElementById("manual-evac-name").value = "";
+      document.getElementById("manual-evac-lat").textContent = "--";
+      document.getElementById("manual-evac-lng").textContent = "--";
+
+      // 🔄 Refresh UI text
+      const evacDisplay = document.getElementById("evacuation-display");
+      const evacButton = document.getElementById("evacuation-button");
+      if (evacDisplay) evacDisplay.textContent = "—";
+      if (evacButton) evacButton.textContent = "Add Evacuation Center";
+
+      // 🧽 Fully clear map visuals
+      clearMapVisuals();
+
+      // ✅ Re-show device marker and circle only
+      db.ref(`DEVICES/${deviceId}`).once("value").then(snapshot => {
+        const device = snapshot.val();
+        if (device) {
+          drawCircleAndMarker(deviceId, device);
+          const radiusRaw = device.DEVICE_SETTING?.Radius;
+          const radius = parseFloat(radiusRaw);
+          const validRadius = isNaN(radius) || radius <= 0 ? 100 : radius;
+
+          const deviceLat = parseFloat(device.DEVICE_SETTING?.Latitude);
+          const deviceLng = parseFloat(device.DEVICE_SETTING?.Longitude);
+
+          if (!isNaN(deviceLat) && !isNaN(deviceLng)) {
+            const deviceLatLng = new google.maps.LatLng(deviceLat, deviceLng);
+            map.panTo(deviceLatLng);
+            map.setZoom(getZoomFromRadius(validRadius));
+          }c
+        }
+      });
+    })
+    .catch(error => {
+      console.error("Error clearing evacuation data:", error);
+      alert("Something went wrong. Please try again.");
+    });
+}
+
+
+function showEvacInfoBox(message) {
+  let infoBox = document.getElementById("evac-info-box");
+  if (!infoBox) {
+    infoBox = document.createElement("div");
+    infoBox.id = "evac-info-box";
+    infoBox.style.position = "fixed";
+    infoBox.style.top = "16px";
+    infoBox.style.left = "50%";
+    infoBox.style.transform = "translateX(-50%)";
+    infoBox.style.backgroundColor = "#fff3cd";
+    infoBox.style.color = "#856404";
+    infoBox.style.padding = "12px 20px";
+    infoBox.style.border = "1px solid #ffeeba";
+    infoBox.style.borderRadius = "6px";
+    infoBox.style.boxShadow = "0 2px 6px rgba(0,0,0,0.1)";
+    infoBox.style.zIndex = "9999";
+    infoBox.style.fontSize = "14px";
+    infoBox.textContent = message;
+    document.body.appendChild(infoBox);
+
+    setTimeout(() => {
+      infoBox.remove();
+    }, 5000);
+  }
+}
+
+
+
     </script>
 
-    <script async
-        src="https://maps.googleapis.com/maps/api/js?key={{ env('GOOGLE_MAPS_API_KEY') }}&loading=async&v=beta&libraries=marker,geometry">
-    </script>
-
+<script async
+  src="https://maps.googleapis.com/maps/api/js?key={{ env('GOOGLE_MAPS_API_KEY') }}&loading=async&v=beta&libraries=places,marker,geometry">
+</script>
 
 
 
@@ -949,12 +1404,16 @@ function drawAnimatedPolyline(path) {
                 <button id="edit-radius-btn" onclick="toggleRadiusEdit()">Change</button>
                 <button id="save-radius-btn" onclick="saveRadius()" style="display: none;">Save</button>
             </p>
+            <p>
+  <strong>Evacuation Center:</strong>
+  <span id="evacuation-display">—</span>
+  <button id="evacuation-button" onclick="showManualEvacModal()">Add Evacuation Center</button>
+        </p>
+        <button onclick="clearEvacuationData()" class="btn clear">Clear</button>
             <div class="modal-actions">
                 <button onclick="confirmDeleteDevice()" class="delete-btn">Delete Device</button>
                 <button onclick="closeModal()" class="close-btn">Close</button>
             </div>
-
-
         </div>
     </div>
 
@@ -972,6 +1431,31 @@ function drawAnimatedPolyline(path) {
             <button onclick="performDelete()" class="delete-btn">Confirm</button>
         </div>
     </div>
+
+<div id="manual-evac-modal" class="modal">
+  <h3>Assign Evacuation Center</h3>
+  <input id="evac-search-box" type="text" placeholder="Search for a place..." style="width: 100%; padding: 8px; margin-bottom: 10px;" />
+  <div id="manual-evac-map" style="width: 100%; height: 380px; margin: 10px 0; border: 1px solid #ccc;"></div>
+
+   <p>Evacuation Name:</p> <input type="text" id="manual-evac-name" placeholder="Evacuation name..." />
+  <p>Selected: 
+    <span id="manual-evac-lat">--</span>, 
+    <span id="manual-evac-lng">--</span>
+  </p>
+
+  <button class="button-basic" onclick="confirmManualEvac()">Save</button>
+  <button class="button-basic save" onclick="closeManualEvacModal()">Cancel</button>
+</div>
+
+<div id="evac-clear-confirm" class="modal">
+  <div class="modal-content">
+    <h3>Confirm Clear</h3>
+    <p>Are you sure you want to remove this device's evacuation data?</p>
+    <div class="modal-actions">
+      <button onclick="executeEvacClear()" class="btn danger">Yes, Clear</button>
+      <button onclick="closeEvacConfirm()" class="btn neutral">Cancel</button>
+    </div>
+  </div>
 
     <script>
         document.getElementById('modal-overlay').addEventListener('click', () => {

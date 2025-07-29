@@ -5,10 +5,10 @@ namespace App\Console\Commands;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Http;
 
-class AssignNearestSchoolDetails extends Command
+class AssignNearestEvacuationCenter extends Command
 {
-    protected $signature = 'evacuation:schooldetails';
-    protected $description = 'Assign nearest school name and coordinates based on device location';
+    protected $signature = 'evacuation:assign-center';
+    protected $description = 'Assign nearest evacuation center name and coordinates based on device location';
 
     public function handle()
     {
@@ -31,17 +31,18 @@ class AssignNearestSchoolDetails extends Command
             $nearest = $response['results'][0] ?? null;
 
             if ($nearest && isset($nearest['geometry']['location'], $nearest['name'])) {
-                $schoolData = [
-                    'SchoolName' => $nearest['name'],
+                $evacuationData = [
+                    'Evacuation_Center' => $nearest['name'],
                     'Latitude' => $nearest['geometry']['location']['lat'],
                     'Longitude' => $nearest['geometry']['location']['lng'],
+                    'Setup' => 'Auto',
                 ];
 
                 $evacUrl = "https://airsentinel-6d53a-default-rtdb.asia-southeast1.firebasedatabase.app/DEVICES/{$deviceId}/EVACUATION_DATA.json";
-                Http::put($evacUrl, $schoolData);
+                Http::put($evacUrl, $evacuationData);
             }
         }
 
-        $this->info('✅ School name and location assignment done.');
+        $this->info('✅ Evacuation center assignment completed successfully.');
     }
 }
