@@ -1035,7 +1035,7 @@ function drawAnimatedPolyline(path) {
   activePathPolyline = new google.maps.Polyline({
     path: [],
     geodesic: true,
-    strokeColor: "#4A90E2",
+    strokeColor: "#043673",
     strokeOpacity: 0.6,
     strokeWeight: 6,
     map: map,

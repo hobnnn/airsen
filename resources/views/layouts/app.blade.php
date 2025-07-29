@@ -5,7 +5,9 @@
         <meta name="viewport" content="width=device-width, initial-scale=1">
         <meta name="csrf-token" content="{{ csrf_token() }}">
 
-        <title>{{ config('app.name', 'Laravel') }}</title>
+        <title>Air Sentinel</title>
+
+        <link rel="icon" href="{{ asset('icons/Logo.png') }}" type="image/png">
 
         <!-- Fonts -->
         <link rel="preconnect" href="https://fonts.bunny.net">
@@ -16,10 +18,12 @@
 
         <style>
 .container {
-    max-width: 1200px;
+    max-width: 1440px;
     margin: 0 auto;
     padding: 24px;
+    box-sizing: border-box;
 }
+
 
 /* Header Title */
 .dashboard-title {

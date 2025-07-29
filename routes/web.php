@@ -7,7 +7,7 @@ use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\HighAlertController;
 
 Route::get('/', function () {
-    return view('welcome');
+    return view('/auth.login');
 });
 
 //check firebase connection
