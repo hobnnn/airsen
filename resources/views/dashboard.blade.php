@@ -701,72 +701,74 @@ evacDataRef.once("value").then(evacSnap => {
         let activeDeviceLabel = null;
         let activeEvacLabel = null;
 
-        async function initMap() {
-            const {
-                Map
-            } = await google.maps.importLibrary("maps");
-            const {
-                AdvancedMarkerElement
-            } = await google.maps.importLibrary("marker");
+async function initMap() {
+  // 🔒 Safety check to avoid "importLibrary is not a function" error
+  if (!google.maps.importLibrary) {
+    console.warn("Google Maps API not fully loaded yet, retrying...");
+    setTimeout(initMap, 500);
+    return;
+  }
 
-            map = new Map(document.getElementById("map"), {
-                center: {
-                    lat: 14.2695,
-                    lng: 121.0994
-                },
-                zoom: 14,
-                mapId: "YOUR_MAP_ID",
-                mapTypeControl: false,
-                streetViewControl: false,
-                fullscreenControl: false,
-            });
+  const { Map } = await google.maps.importLibrary("maps");
+  const { AdvancedMarkerElement } = await google.maps.importLibrary("marker");
 
-            const ref = firebase.database().ref("DEVICES");
+  map = new Map(document.getElementById("map"), {
+    center: { lat: 14.2695, lng: 121.0994 },
+    zoom: 14,
+    mapId: "YOUR_MAP_ID",
+    mapTypeControl: false,
+    streetViewControl: false,
+    fullscreenControl: false
+  });
 
-            // 🔁 Initial map render (accurate radius from DEVICE_SETTING)
-            ref.once("value").then((snapshot) => {
-                const devices = snapshot.val();
-                if (!devices) return;
+  const ref = firebase.database().ref("DEVICES");
 
-                Object.entries(devices).forEach(([deviceId, device]) => {
-                    drawCircleAndMarker(deviceId, device);
-                });
-            });
+  // 🎯 Initial device render with circles + markers
+ref.on("value", snapshot => {
+  const devices = snapshot.val();
+  if (!devices) return;
 
-            // 🔄 Realtime radius-only listener
-            ref.once("value").then((snapshot) => {
-                const devices = snapshot.val();
-                if (!devices) return;
+  Object.entries(devices).forEach(([deviceId, device]) => {
+    drawCircleAndMarker(deviceId, device);
+  });
+});
 
-                Object.keys(devices).forEach((deviceId) => {
-                    firebase.database()
-                        .ref(`DEVICES/${deviceId}/DEVICE_SETTING/Radius`)
-                        .on("value", (snap) => {
-                            const radius = parseFloat(snap.val());
-                            const validRadius = isNaN(radius) || radius <= 0 ? 100 : radius;
+  // 🔄 Radius-only live listener
+  ref.once("value").then(snapshot => {
+    const devices = snapshot.val();
+    if (!devices) return;
 
-                            if (circleMap[deviceId]) {
-                                circleMap[deviceId].setOptions({
-                                    radius: validRadius
-                                });
-                            }
-                        });
-                });
-            });
+    Object.keys(devices).forEach(deviceId => {
+      firebase.database()
+        .ref(`DEVICES/${deviceId}/DEVICE_SETTING/Radius`)
+        .on("value", snap => {
+          const radius = parseFloat(snap.val());
+          const validRadius = isNaN(radius) || radius <= 0 ? 100 : radius;
 
-            // 🔁 Realtime device updates for position / color changes
-            ref.on("value", (snapshot) => {
-                const devices = snapshot.val();
-                if (!devices) return;
+          if (circleMap[deviceId]) {
+            circleMap[deviceId].setOptions({ radius: validRadius });
+          }
+        });
+    });
+  });
 
-                Object.entries(devices).forEach(([deviceId, device]) => {
-                    drawCircleAndMarker(deviceId, device);
-                });
-            });
-        }
+  // 🔁 Full real-time updates for position + color
+  ref.on("value", snapshot => {
+    const devices = snapshot.val();
+    if (!devices) return;
 
-        // Trigger map init after page load
-        window.addEventListener("load", initMap);
+    Object.entries(devices).forEach(([deviceId, device]) => {
+      drawCircleAndMarker(deviceId, device);
+    });
+  });
+
+  if (!document.getElementById("map")) {
+  console.warn("Map container missing, retrying...");
+  setTimeout(initMap, 500);
+  return;
+}
+}
+
 
         function getHighestLevel(sensorData) {
             const priority = ["critical", "very unhealthy", "unhealthy", "moderate", "safe"];
@@ -824,9 +826,9 @@ evacDataRef.once("value").then(evacSnap => {
                 circleMap[deviceId] = circle;
             }
 
-            if (markerMap[deviceId]?.marker) {
-                markerMap[deviceId].marker.map = null;
-            }
+            if (markerMap[deviceId]) {
+  markerMap[deviceId].marker.setMap(null); // safer than `.map = null`
+}
 
             const marker = new google.maps.marker.AdvancedMarkerElement({
                 map,
@@ -1067,10 +1069,10 @@ function confirmManualEvac() {
   if (!deviceId) return;
 
   const evacName = document.getElementById("manual-evac-name").value.trim();
-  const lat = parseFloat(document.getElementById("manual-evac-lat").textContent);
-  const lng = parseFloat(document.getElementById("manual-evac-lng").textContent);
+  const lat = document.getElementById("manual-evac-lat").textContent.trim();
+  const lng = document.getElementById("manual-evac-lng").textContent.trim();
 
-  if (!evacName || isNaN(lat) || isNaN(lng)) return;
+  if (!evacName || !lat || !lng) return; // check for empty strings now
 
   const evacRef = db.ref(`DEVICES/${deviceId}/EVACUATION_DATA`);
   evacRef.set({
@@ -1078,7 +1080,7 @@ function confirmManualEvac() {
     Latitude: lat,
     Longitude: lng
   }).then(() => {
-    closeManualEvacModal(); // Hide modal after saving
+    closeManualEvacModal();
   });
 }
 
@@ -1365,6 +1367,17 @@ function showEvacInfoBox(message) {
 
 <script async
   src="https://maps.googleapis.com/maps/api/js?key={{ env('GOOGLE_MAPS_API_KEY') }}&loading=async&v=beta&libraries=places,marker,geometry">
+</script>
+<script>
+  document.querySelector('script[src*="maps.googleapis.com"]')?.addEventListener("load", () => {
+  initMap();
+});
+
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "visible") {
+    initMap();
+  }
+});
 </script>
 
 

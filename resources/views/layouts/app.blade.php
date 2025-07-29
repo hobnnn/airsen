@@ -174,4 +174,12 @@
             </main>
         </div>
     </body>
+
+    <script>
+        fetch('/hello-log')
+  .then(res => res.json())
+  .then(data => {
+    data.messages.forEach((msg, i) => console.log(`[${i}] ${msg}`));
+  });
+    </script>
 </html>

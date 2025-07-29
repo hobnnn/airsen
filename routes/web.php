@@ -10,6 +10,12 @@ Route::get('/', function () {
     return view('/auth.login');
 });
 
+Route::get('/hello-log', function () {
+    return response()->json([
+        'messages' => Cache::get('hello_world_logs', [])
+    ]);
+});
+
 //check firebase connection
 //Route::get('/', [FirebaseConnectionController::class, 'index']);
 

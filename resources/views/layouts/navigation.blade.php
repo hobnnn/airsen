@@ -12,12 +12,14 @@
 
                 <!-- Navigation Links -->
                 <div class="hidden space-x-8 sm:-my-px sm:ms-10 sm:flex">
-                    <x-nav-link :href="route('dashboard')" :active="request()->routeIs('dashboard')" class="text-white border-b-2" style="border-color: #A4D4AE;">
+                    <x-nav-link :href="route('dashboard')" :active="request()->routeIs('dashboard')"
+                        class="{{ request()->routeIs('dashboard') ? 'border-b-[3px] border-[#A4D4AE] text-white font-semibold' : 'text-white hover:text-gray-200' }}">
                         {{ __('Dashboard') }}
                     </x-nav-link>
-                    <x-nav-link :href="route('high-alert')" :active="request()->routeIs('dashboard')" class="text-white border-b-2" style="border-color: #A4D4AE;">
-                        {{ __('High Alert') }}
-                    </x-nav-link>
+                    <x-nav-link :href="route('high-alert')" :active="request()->routeIs('dashboard')"
+  class="{{ request()->routeIs('high-alert') ? 'border-b-[3px] border-[#A4D4AE] text-white font-semibold' : 'text-white hover:text-gray-200' }}">
+  {{ __('High Alert') }}
+</x-nav-link>
                 </div>
             </div>
 

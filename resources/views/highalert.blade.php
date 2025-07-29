@@ -50,41 +50,69 @@
 .log-entry:nth-child(n + 8) {
   margin-top: auto; /* triggers scroll effect visually */
 }
+
+#sensorChart {
+  max-height: 250px;
+  width: 100%;
+}
   </style>
 
-  <div class="py-6">
-    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-      <div class="bg-indigo-50 sm:rounded-lg flex overflow-hidden" style="min-height: 400px; height: 500px;">
-        <!-- Left: Device List -->
-        <div class="w-64 p-4 bg-indigo-50 border-r border-indigo-100">
-          <h3 class="text-md font-semibold text-gray-700 mb-3">Devices</h3>
-          <div id="device-list" class="flex flex-col gap-2 h-full overflow-y-auto"></div>
+<!-- 🔷 Main Content Section with Device List and Alerts -->
+<div class="py-6">
+  <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+    <div class="bg-indigo-50 sm:rounded-lg flex overflow-hidden" style="min-height: 400px; height: 500px;">
+      
+      <!-- Left: Device List -->
+      <div class="w-64 p-4 bg-indigo-50 border-r border-indigo-100">
+        <h3 class="text-md font-semibold text-gray-700 mb-3">Devices</h3>
+        <div id="device-list" class="flex flex-col gap-2 h-full overflow-y-auto"></div>
+      </div>
+
+      <!-- Right: Alert Content -->
+      <div class="flex-1 p-6 bg-indigo-50 flex flex-col">
+        <h3 class="text-lg font-semibold text-gray-800 mb-2" id="device-label">Select a device</h3>
+
+        <!-- Tabs -->
+        <div class="flex mb-4" id="sensor-tabs">
+          <div class="tab-button active" data-sensor="All">All</div>
+          <div class="tab-button" data-sensor="CO-LPG">CO-LPG</div>
+          <div class="tab-button" data-sensor="CO2">CO2</div>
+          <div class="tab-button" data-sensor="Gen_Air_Qua">General</div>
+          <div class="tab-button" data-sensor="SO2_H2S">SO2-H2S</div>
         </div>
 
-        <!-- Right: Alert Content -->
-        <div class="flex-1 p-6 bg-indigo-50 flex flex-col">
-          <h3 class="text-lg font-semibold text-gray-800 mb-2" id="device-label">Select a device</h3>
+        <!-- Alert Logs -->
+        <div class="bg-white rounded-lg shadow p-4 h-[250px] overflow-y-auto" id="sensor-logs"></div>
 
-          <!-- Tabs -->
-          <div class="flex mb-4" id="sensor-tabs">
-            <div class="tab-button active" data-sensor="All">All</div>
-            <div class="tab-button" data-sensor="CO-LPG">CO-LPG</div>
-            <div class="tab-button" data-sensor="CO2">CO2</div>
-            <div class="tab-button" data-sensor="Gen_Air_Qua">General</div>
-            <div class="tab-button" data-sensor="SO2-H2S">SO2-H2S</div>
-          </div>
-
-          <!-- Alert Logs -->
-          <div class="bg-white rounded-lg shadow p-4 h-[250px] overflow-y-auto" id="sensor-logs"></div>
-        </div>
       </div>
     </div>
   </div>
+</div>
+
+<!-- 📊 Sensor Value Timeline Section (Detached Below) -->
+<div class="py-6">
+  <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+    <div class="bg-white rounded-lg shadow p-6">
+      <h3 class="text-md font-semibold text-gray-800 mb-2">Sensor Value Timeline</h3>
+      <select id="sensor-type-filter" class="mb-4 px-3 py-2 rounded-md border">
+  <option value="All">All Types</option>
+  <option value="CO-LPG">CO-LPG</option>
+  <option value="CO2">CO2</option>
+  <option value="Gen_Air_Qua">General Air Quality</option>
+  <option value="SO2_H2S">SO2-H2S</option>
+</select>
+      <canvas id="sensorChart" height="250"></canvas>
+    </div>
+  </div>
+</div>
 
   <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns"></script>
 
   <script>
+
     const firebaseConfig = {
       apiKey: "{{ env('FIREBASE_CLIENT_API_KEY') }}",
       authDomain: "{{ env('FIREBASE_CLIENT_AUTH_DOMAIN') }}",
@@ -100,11 +128,11 @@
     const ALERT_LEVELS = ["Unhealthy", "Very Unhealthy", "Critical"];
 
     const SENSOR_LABEL_MAP = {
-      "CO-LPG": ["Carbon Monoxide / LPG"],
-      "CO2": ["Carbon Dioxide"],
-      "Gen_Air_Qua": ["Air Quality (General Pollution)"],
-      "SO2-H2S": ["Sulfur Dioxide / Hydrogen Sulfide"]
-    };
+  "CO-LPG": ["Carbon Monoxide / LPG"],
+  "CO2": ["Carbon Dioxide"],
+  "Gen_Air_Qua": ["Air Quality (General Pollution)"],
+  "SO2_H2S": ["Sulfur Dioxide / Hydrogen Sulfide"] // ✅ use underscore here
+};
 
     const deviceList = document.getElementById("device-list");
     const deviceLabel = document.getElementById("device-label");
@@ -113,6 +141,8 @@
 
     let currentUID = null;
     let allAlerts = {};
+
+      let sensorChartInstance = null;
 
     function loadHighAlertDevices() {
       db.ref("DEVICES").once("value").then(snapshot => {
@@ -163,20 +193,22 @@ deviceLabel.textContent = `${uidFull} — ${name} — Radius: ${radius}m`;
       tabs[0].classList.add("active");
 
       loadDeviceAlerts(uid);
+renderSensorChart(uid);
     }
 
     function loadDeviceAlerts(uid) {
-      db.ref(`HIGH_ALERT_LOGS/${uid}`).once("value").then(snapshot => {
-        const logs = snapshot.val() || {};
-        allAlerts = {};
+  db.ref(`HIGH_ALERT_LOGS/${uid}`).once("value").then(snapshot => {
+    const logs = snapshot.val() || {};
+    allAlerts = {};
 
-        Object.entries(logs).forEach(([sensor, entries]) => {
-          allAlerts[sensor] = Object.values(entries);
-        });
+    Object.entries(logs).forEach(([sensor, entries]) => {
+      allAlerts[sensor] = Object.values(entries);
+    });
 
-        renderAlerts("All");
-      });
-    }
+    renderAlerts("All");
+    renderSensorChart(uid); // ✅ Move here so it waits for data
+  });
+}
 
     function renderAlerts(sensorType) {
       logsContainer.innerHTML = "";
@@ -213,51 +245,91 @@ deviceLabel.textContent = `${uidFull} — ${name} — Radius: ${radius}m`;
     });
 
     loadHighAlertDevices();
-  </script>
 
-  <script>
-  const ALERT_SCAN_INTERVAL_MS = 1800000; // ⏱ 30 1800000 60000
+    document.getElementById("sensor-type-filter").addEventListener("change", e => {
+  const selectedType = e.target.value;
+  renderSensorChart(currentUID, selectedType);
+});
 
-  function checkAndLogAlerts() {
-    db.ref("DEVICES").once("value").then(snapshot => {
-      const devices = snapshot.val();
-      if (!devices) return;
 
-      Object.entries(devices).forEach(([deviceId, device]) => {
-        const UID = device?.DEVICE_SETTING?.Device_UID || deviceId;
-        const safeUID = UID.replace(/[.#$[\]/]/g, "_");
-        const sensors = device?.SENSOR_DATA || {};
 
-        Object.entries(sensors).forEach(([sensorType, sensorData]) => {
-          if (typeof sensorData !== "object") return;
+function renderSensorChart(uid, sensorFilter = "All") {
+  db.ref(`HIGH_ALERT_LOGS/${uid}`).once("value").then(snapshot => {
+    const logs = snapshot.val();
+    if (!logs) return;
 
-          const level = sensorData.Level;
-          const value = sensorData.Value;
-          const label = sensorData.Label || sensorType;
+    const WEEKDAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
+    const SENSOR_KEYS = ["CO-LPG", "CO2", "Gen_Air_Qua", "SO2_H2S"];
+    const ALERT_LEVEL_COLORS = {
+      Safe: "#A3E635",
+      Moderate: "#FACC15",
+      Unhealthy: "#F97316",
+      "Very Unhealthy": "#EF4444",
+      Critical: "#7F1D1D"
+    };
 
-          if (ALERT_LEVELS.includes(level)) {
-            const timestamp = new Date().toISOString();
-            const safeTimestamp = timestamp.replace(/[.#$[\]/:]/g, "_");
-            const safeSensor = sensorType.replace(/[.#$[\]/]/g, "_");
+    const chartData = {};
+    WEEKDAYS.forEach(day => chartData[day] = {});
 
-            const logData = {
-              Sensor_Label: label,
-              Sensor_Value: value,
-              Sensor_Level: level,
-              Timestamp: timestamp
-            };
+    Object.entries(logs).forEach(([sensorType, entries]) => {
+      if (sensorFilter !== "All" && sensorType !== sensorFilter) return;
+      if (!SENSOR_KEYS.includes(sensorType)) return;
 
-            const path = `HIGH_ALERT_LOGS/${safeUID}/${safeSensor}/${safeTimestamp}`;
-            db.ref(path).set(logData);
-          }
-        });
+      Object.values(entries).forEach(entry => {
+        const date = new Date(entry.Timestamp);
+        const weekday = date.toLocaleDateString("en-US", { weekday: "long" });
+        const value = parseFloat(entry.Sensor_Value);
+        const level = entry.Sensor_Level;
+
+        if (!isNaN(value)) {
+          if (!chartData[weekday][level]) chartData[weekday][level] = 0;
+          chartData[weekday][level] += value;
+        }
       });
     });
-  }
 
-  // 🔁 Start scanning loop every 30 minutes — no initial trigger
-  setInterval(checkAndLogAlerts, ALERT_SCAN_INTERVAL_MS);
+    const datasets = Object.entries(ALERT_LEVEL_COLORS).map(([level, color]) => {
+      const data = WEEKDAYS.map(day => chartData[day][level] || 0);
+      return {
+        label: level,
+        data,
+        backgroundColor: color
+      };
+    });
 
-  
-</script>
+    if (sensorChartInstance && typeof sensorChartInstance.destroy === 'function') {
+      sensorChartInstance.destroy();
+    }
+
+    const ctx = document.getElementById('sensorChart').getContext('2d');
+    sensorChartInstance = new Chart(ctx, {
+      type: "bar",
+      data: {
+        labels: WEEKDAYS,
+        datasets
+      },
+      options: {
+        responsive: true,
+        plugins: {
+          tooltip: { mode: "index", intersect: false },
+          legend: { position: "bottom" }
+        },
+        scales: {
+          x: {
+            stacked: false, // 🔄 Clustered columns enabled
+            title: { display: true, text: "Day of the Week" }
+          },
+          y: {
+            stacked: false,
+            beginAtZero: true,
+            title: { display: true, text: "Sensor Value" }
+          }
+        }
+      }
+    });
+  });
+}
+
+  </script>
+
 </x-app-layout>
